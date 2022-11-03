@@ -5,6 +5,8 @@ Installed as a regular mod, this tool will give you access to level configuratio
 and is built as a template so that anyone making their own custom level can simply
 republish the mod to share with others.
 
+Used in the SA2 Modding Tutorial [How to Create a Custom Level for Sonic Adventure 2](https://github.com/X-Hax/SA2BModdingGuide/wiki/Basic-Level-Modding).
+
 Special thanks to the [X-Hax community](https://github.com/X-Hax/) for the provided libraries as well as coding help!
 
 Feel free to contribute or message me for any information! J-N-R

@@ -1,4 +1,4 @@
-/**
+/*
  * LevelImporter.cpp Version 4
  *
  * Description:
@@ -26,7 +26,6 @@
 #include <cstdio>
 #include <filesystem>
 #include <curl/curl.h>
-#include <functional>
 #include <vector>
 #define VERSION 4.0f
 // By default, LevelImporter supports up to 1000 custom textures.
@@ -55,26 +54,29 @@ void LevelImporter::init() {
 	iniReader->loadIniOptions();
 
 	// Create simple importLevel() queries from read options.
-	if (iniReader->levelID != -1 || !iniReader->getChaoGarden().empty()) {
+	if (iniReader->levelID != -1) {
 		importLevel();
 	}
 	// Create complex importLevel() queries from read options.
 	for (std::vector<std::string> parameters : iniReader->importLevelQueries) {
 		switch (parameters.size()) {
 			case 1:
-				// importLevel(parameters[0]);
-				printDebug("importLevel(" + parameters[0]);
+				printDebug("Running function: importLevel(" + parameters[0] +
+					").");
+				importLevel(parameters[0]);
 				break;
 			case 2:
-				// importLevel(parameters[0], parameters[1]);
-				printDebug("importLevel(" + parameters[0] + ", " + parameters[1] + ")");
+				printDebug("Running function: importLevel(" + parameters[0] +
+					", " + parameters[1] + ").");
+				importLevel(parameters[0], parameters[1]);
 				break;
 			case 3:
-				// importLevel(parameters[0], parameters[1], parameters[2]);
-				printDebug("importLevel(" + parameters[0] + ", " + parameters[1] + ", " + parameters[2] + ")");
+				printDebug("Running function: importLevel(" + parameters[0] +
+					", " + parameters[1] + ", " + parameters[2] + ").");
+				importLevel(parameters[0], parameters[1], parameters[2]);
 				break;
 			default:
-				printDebug("(Warning) Strange Import_Level query found in"
+				printDebug("(Warning) Broken Import_Level query found in"
 					"level_options.ini. Disregarding.");
 		}
 	}
@@ -94,12 +96,11 @@ void LevelImporter::init() {
  *	  levelFileName for the pak name as default.
  */
 void LevelImporter::importLevel(std::string landTableName,
-		std::string levelFileName,
-		std::string texturePakName) {
+		std::string levelFileName, std::string texturePakName) {
 	// If no parameters are given, use levelID from iniReader and any .pak /
 	// .sa2blvl file you can find.
 	if (landTableName.empty()) {
-		if (!iniReader->getChaoGarden().empty()) {
+		if (iniReader->levelID >= 67) {
 			landTableName = iniReader->getChaoGarden();
 		}
 		else if (iniReader->levelID == -1) {
@@ -152,12 +153,12 @@ void LevelImporter::importLevel(std::string landTableName,
 		if (lastDot != std::string::npos) {
 			levelFileName = levelFileName.substr(0, lastDot);
 		}
-		lastDot = levelFileName.find_last_of(".");
+		lastDot = texturePakName.find_last_of(".");
 		if (lastDot != std::string::npos) {
-			levelFileName = levelFileName.substr(0, lastDot);
+			texturePakName = texturePakName.substr(0, lastDot);
 		}
 	}
-	
+
 	// Grab original landtable and replace with ours.
 	HMODULE v0 = **datadllhandle;
 	LandTable* Land = (LandTable*)GetProcAddress(v0, landTableName.c_str());
@@ -261,8 +262,8 @@ void LevelImporter::fixFileStructure() {
 				}
 				else {
 					printDebug("(ERROR) Error renaming SET file.");
-					printDebug("(ERROR) SET file should be named "
-						+ fileName + ".");
+					printDebug("(ERROR) SET file should be named" + fileName +
+						".");
 				}
 			}
 			else if (filePath.extension().string() == ".pak") {
@@ -305,8 +306,8 @@ void LevelImporter::checkForUpdate() {
 
 	// Read version number from github, store result as string.
 	curl_easy_setopt(curl, CURLOPT_URL,
-		"https://raw.githubusercontent.com/X-Hax/SA2BModdingGuide"
-			"/master/Level%20Editing/My%20Level%20Mod/VERSION.txt");
+		"https://raw.githubusercontent.com/J-N-R/"
+			"My-Level-Mod/master/VERSION.txt");
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, this->writer);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &result);
@@ -332,7 +333,7 @@ void LevelImporter::checkForUpdate() {
 				std::endl;
 			updateFile << "Please download and update your mod manually. "
 				"Download link:" << std::endl;
-			updateFile << "https://github.com/X-Hax/SA2BModdingGuide/"
+			updateFile << "https://github.com/J-N-R/My-Level-Mod/"
 				"releases" << std::endl;
 			updateFile.close();
 		}

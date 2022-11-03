@@ -16,7 +16,6 @@ class IniReader {
 		std::string getLevelID();
 
 	private:
-		int replaceChaoGarden;
 		const char* optionsPath;
 		const char* gdPCPath;
 		const HelperFunctions& helperFunctions;

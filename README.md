@@ -26,6 +26,8 @@ Feel free to contribute or message me for any information! J-N-R
 * Auto update detection and notifications.
 * Adds optional features through an 'options' file, with support for:
    * Multiple level imports
+   
+   * Import over chao garden
 
    * Spawn location
    

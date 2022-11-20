@@ -9,7 +9,7 @@ code, and more features are constantly being added. This tool also acts as a mod
 so once you've added your level, feel free to republish as your own mod to share with friends.
 Happy Modding!
 
-## Start by checking the [wiki](https://github.com/J-N-R/My-Level-Mod/wiki).
+## Get Started by checking out the [wiki](https://github.com/J-N-R/My-Level-Mod/wiki).
 
 ## Notes
 This tool was built and used in the [How to Create a Custom Level for Sonic Adventure 2](https://github.com/X-Hax/SA2BModdingGuide/wiki/Basic-Level-Modding) tutorial, on the official Sonic Adventure 2 modding wiki.

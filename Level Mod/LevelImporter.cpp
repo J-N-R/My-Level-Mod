@@ -1,5 +1,5 @@
 /*
- * LevelImporter.cpp Version 4
+ * LevelImporter.cpp Version 4.1
  *
  * Description:
  *    A c++ class dedicated to making and importing levels into Sonic
@@ -27,7 +27,7 @@
 #include <filesystem>
 #include <curl/curl.h>
 #include <vector>
-#define VERSION 4.0f
+#define VERSION 4.1f
 // By default, LevelImporter supports up to 1000 custom textures.
 // Change the number in here if you need more.
 #define NUMBER_OF_TEXTURES 1000
@@ -83,8 +83,7 @@ void LevelImporter::init() {
 }
 
 /**
- * @function importLevel
- * @description Imports a custom level over an existing level. Parameters are
+ * Imports a custom level over an existing level. Parameters are
  * optional.
  *
  * @param [landTableName] - The original land table you want to replace. Uses
@@ -378,7 +377,7 @@ void LevelImporter::onLevelHook() {
 	if (iniReader->levelID != -1 && CurrentLevel == iniReader->levelID) {
 		printDebug("Level load detected. Loading splines.");
 
-		LoopHead** splines = iniReader->loadSplines();
+		LoopHead** splines = iniReader->readSplines();
 		if (splines) {
 			LoadStagePaths(splines);
 		}

@@ -1,5 +1,5 @@
 /*
- * IniReader.cpp v4
+ * IniReader.cpp v4.1
  *
  * Description:
  *   Script for reading the content of ini files for My Level Mod.
@@ -19,8 +19,6 @@
 
 ObjectFunc(LoopController, 0x497B50);
 ObjectFunc(RailController, 0x4980C0);
-ObjectFunc(CameraSplineController, nullptr);
-ObjectFunc(AltCameraSplineController, nullptr);
 
 IniReader::IniReader(const char* path,
 		const HelperFunctions& helperFunctions)
@@ -82,7 +80,7 @@ void IniReader::loadIniOptions() {
 			else if (levelID != -1 && key == "Spawn_Coordinates" ||
 				key == "Victory_Coordinates") {
 				boolean isStart = key == "Spawn_Coordinates" ? true : false;
-				std::remove(value.begin(), value.end(), ' ');
+				const auto ignoreThis = std::remove(value.begin(), value.end(), ' ');
 				std::istringstream ss(value);
 
 				// Get x, y, and z coordinates.
@@ -103,7 +101,7 @@ void IniReader::loadIniOptions() {
 
 				NJS_VECTOR coordinates{ coords[0], coords[1], coords[2] };
 				StartPosition startPos = {
-							levelID,
+							(short)levelID,
 							0,
 							0,
 							0,
@@ -131,7 +129,9 @@ void IniReader::loadIniOptions() {
 					hasSimpleDeathPlane = true;
 				}
 				// Catch will run if user inputted "OFF" or something else.
-				catch (const std::exception& e) {}
+				catch (const std::exception& e) {
+					const auto ignoreThis = e;
+				}
 				if (hasSimpleDeathPlane) {
 					printDebug("Simple Death Plane set to ON. Player will now die"
 						"under y=" + std::to_string(simpleDeathPlane) + ".");
@@ -146,7 +146,7 @@ void IniReader::loadIniOptions() {
 			// multiple times  to import multiple levels. Does not support the
 			// other features, such as Spawn location or death plane.
 			else if (key == "Import_Level") {
-				std::remove(value.begin(), value.end(), ' ');
+				const auto ignoreThis = std::remove(value.begin(), value.end(), ' ');
 				std::istringstream ss(value);
 
 				printDebug("Import Level query found!");
@@ -170,146 +170,41 @@ void IniReader::loadIniOptions() {
 	iniFile.close();
 }
 
-// Automatically detect, generate, and import splines from spline ini files.
-LoopHead** IniReader::loadSplines() {
+// Automatically reads and generates spline objects from spline ini files.
+// Checks both gd_PC folder and paths folder for spline files.
+LoopHead** IniReader::readSplines() {
 	std::vector<LoopHead*> splines{};
+	std::string pathToPathsFolder = std::string(gdPCPath) + "\\Paths";
 
 	// Find ini files in the gd_PC folder, assume they are spline files.
 	for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
 		std::string filePath = file.path().string();
 
 		if (filePath.find(".ini") != std::string::npos) {
-			std::ifstream splineFile;
-			splineFile.open(filePath, std::ios::in);
-
-			if (!splineFile.is_open()) {
-				printDebug("(Warning) Error opening spline file.");
-				return nullptr;
+			printDebug("Spline file \"" + filePath + "\" found.");
+			LoopHead* spline = readSpline(filePath);
+			if (spline != nullptr) {
+				splines.push_back(spline);
 			}
-
-            printDebug("Spline file \"" + filePath + "\" found.");
-
-            float totalDistance{};
-            std::string code{};
-            std::vector<LoopPoint> points{};
-
-            try {
-                // Read spline file header.
-                std::string line;
-                while (line.find("[") == std::string::npos) {
-                    std::getline(splineFile, line);
-                    if (line.find('=') != std::string::npos) {
-                        std::string key = line.substr(0, line.find('='));
-                        std::string value = line.substr(line.find('=') + 1);
-
-                        if (key == "TotalDistance") {
-                            totalDistance = std::stof(value);
-                        }
-                        else if (key == "Code") {
-                            code = value;
-                        }
-                    }
-                }
-
-                // Read spline data and create spline objects.
-                while (line.find("[") != std::string::npos &&
-						!splineFile.eof()) {
-                    int xRot{}, zRot{};
-                    float distance{};
-                    float coords[3]{};
-
-                    std::getline(splineFile, line);
-                    while (line.find("[") == std::string::npos &&
-							!splineFile.eof()) {
-                        if (line.find('=') != std::string::npos) {
-                            std::string key = line.substr(0, line.find('='));
-                            std::string value = line.substr(line.find('=') + 1);
-
-                            if (key == "XRotation") {
-                                xRot = std::stoi(value, 0, 16);
-                            }
-                            else if (key == "ZRotation") {
-                                zRot = std::stoi(value, 0, 16);
-                            }
-                            else if (key == "Distance") {
-                                distance = std::stof(value);
-                            }
-                            else if (key == "Position") {
-                                // Remove spaces from line.
-                                std::string::iterator end_pos =
-                                    std::remove(value.begin(), value.end(),
-										' ');
-                                value.erase(end_pos, value.end());
-
-                                std::istringstream ss(value);
-                                try {
-                                    std::string token{};
-                                    for (int i = 0; i < 3; i++) {
-                                        std::getline(ss, token, ',');
-                                        coords[i] = std::stof(token);
-                                    }
-                                }
-                                // Print debug information in case of error.
-                                catch (const std::exception& e) {
-                                    printDebug("(Warning) Unexpected "
-                                        "error/value in spline point: " +
-                                        value + ".");
-                                    printDebug("(Warning) Deleting spline.");
-                                    printDebug(e.what());
-                                    return nullptr;
-                                }
-                            }
-                        }
-                        std::getline(splineFile, line);
-                    }
-
-                    // Create new point from read data.
-                    LoopPoint point {
-                        xRot,
-                        zRot,
-                        distance,
-                        {
-                            coords[0], 
-                            coords[1],
-                            coords[2]
-                        }
-                    };
-                    points.push_back(point);
-                }
-                LoopHead* spline = new LoopHead;
-                spline->anonymous_0 = (int16_t)1;
-                spline->Count = (int16_t)points.size();
-                spline->TotalDistance = totalDistance;
-                spline->Points = new LoopPoint[points.size()];
-
-                // If spline is for rails, load spline as rail data.
-                if (code == "4980C0") {
-                    spline->Object = (ObjectFuncPtr)RailController;
-                }
-                // If spline is for loops, load spline as loop data.
-                else if (code == "497B50") {
-                    spline->Object = (ObjectFuncPtr)LoopController;
-                }
-                else {
-                    printDebug("(Warning) Unknown spline code detected. "
-                        "Deleting spline.");
-                    return nullptr;
-                }
-
-                std::copy(points.begin(), points.end(), spline->Points);
-                splines.push_back(spline);
-            }
-            // Print debugs if there was an error loading the spline.
-            catch (const std::exception& e) {
-                printDebug("(ERROR) Invalid value found while reading "
-                    "spline file.");
-                printDebug(e.what());
-            }
-			
-			splineFile.close();
 		}
 	}
 
+	// Find ini files in the paths folder, assume they are spline files. 
+	if (std::filesystem::exists(pathToPathsFolder)) {
+		for (const auto& file :
+			std::filesystem::directory_iterator(pathToPathsFolder)) {
+			std::string filePath = file.path().string();
+
+			if (filePath.find(".ini") != std::string::npos) {
+				printDebug("Spline file \"" + filePath + "\" found.");
+				LoopHead* spline = readSpline(filePath);
+				if (spline != nullptr) {
+					splines.push_back(spline);
+				}
+			}
+		}
+	}
+	
 	if (splines.size() != 0) {
 		printDebug(std::to_string(splines.size()) + " rail spline(s) "
 			"successfully added.");
@@ -322,10 +217,147 @@ LoopHead** IniReader::loadSplines() {
 
 		return splinesArray;
 	}
-	else {
-		printDebug("No splines found.");
+
+	printDebug("No splines found.");
+	return nullptr;
+}
+
+/**
+ * Reads a given spline ini file and returns a single spline object. Returns
+ * nullptr if something goes wrong.
+ *
+ * @param [filePath] - The full file path to your ini file.
+ */
+LoopHead* IniReader::readSpline(std::string filePath) {
+	std::ifstream splineFile;
+	splineFile.open(filePath, std::ios::in);
+
+	if (!splineFile.is_open()) {
+		printDebug("(Warning) Error opening spline file.");
+		return nullptr;
 	}
 
+	float totalDistance{};
+	std::string code{};
+	std::vector<LoopPoint> points{};
+
+	try {
+		// Read spline file header.
+		std::string line;
+		while (line.find("[") == std::string::npos) {
+			std::getline(splineFile, line);
+			if (line.find('=') != std::string::npos) {
+				std::string key = line.substr(0, line.find('='));
+				std::string value = line.substr(line.find('=') + 1);
+
+				if (key == "TotalDistance") {
+					totalDistance = std::stof(value);
+				}
+				else if (key == "Code") {
+					code = value;
+				}
+			}
+		}
+
+		// Read spline data and create spline objects.
+		while (line.find("[") != std::string::npos &&
+			!splineFile.eof()) {
+			short xRot{}, zRot{};
+			float distance{};
+			float coords[3]{};
+
+			std::getline(splineFile, line);
+			while (line.find("[") == std::string::npos &&
+				!splineFile.eof()) {
+				if (line.find('=') != std::string::npos) {
+					std::string key = line.substr(0, line.find('='));
+					std::string value = line.substr(line.find('=') + 1);
+
+					if (key == "XRotation") {
+						xRot = (short)std::stoi(value, 0, 16);
+					}
+					else if (key == "ZRotation") {
+						zRot = (short)std::stoi(value, 0, 16);
+					}
+					else if (key == "Distance") {
+						distance = std::stof(value);
+					}
+					else if (key == "Position") {
+						// Remove spaces from line.
+						std::string::iterator end_pos =
+							std::remove(value.begin(), value.end(),
+								' ');
+						value.erase(end_pos, value.end());
+
+						std::istringstream ss(value);
+						try {
+							std::string token{};
+							for (int i = 0; i < 3; i++) {
+								std::getline(ss, token, ',');
+								coords[i] = std::stof(token);
+							}
+						}
+						// Print debug information in case of error.
+						catch (const std::exception& e) {
+							printDebug("(Warning) Unexpected "
+								"error/value in spline point: " +
+								value + ".");
+							printDebug("(Warning) Deleting spline.");
+							printDebug(e.what());
+							return nullptr;
+						}
+					}
+				}
+				std::getline(splineFile, line);
+			}
+
+			// Create new point from read data.
+			LoopPoint point{
+				xRot,
+				zRot,
+				distance,
+				{
+					coords[0],
+					coords[1],
+					coords[2]
+				}
+			};
+			points.push_back(point);
+		}
+
+		LoopHead* spline = new LoopHead;
+		spline->anonymous_0 = (int16_t)1;
+		spline->Count = (int16_t)points.size();
+		spline->TotalDistance = totalDistance;
+		spline->Points = new LoopPoint[points.size()];
+
+		// If spline is for rails, load spline as rail data.
+		if (code == "4980C0") {
+			spline->Object = (ObjectFuncPtr)RailController;
+		}
+		// If spline is for loops, load spline as loop data.
+		else if (code == "497B50") {
+			spline->Object = (ObjectFuncPtr)LoopController;
+		}
+		else {
+			printDebug("(Warning) Unknown spline code detected. "
+				"Deleting spline.");
+			return nullptr;
+		}
+
+		std::copy(points.begin(), points.end(), spline->Points);
+
+		splineFile.close();
+		return spline;
+	}
+	// Print debugs if there was an error loading the spline.
+	catch (const std::exception& e) {
+		printDebug("(ERROR) Invalid value found while reading "
+			"spline file.");
+		printDebug(e.what());
+	}
+
+	splineFile.close();
 	return nullptr;
 }
 
@@ -393,9 +425,6 @@ std::string IniReader::getChaoGarden() {
 void IniReader::printDebug(std::string message) {
 	PrintDebug(("[My Level Mod] " + message).c_str());
 }
-
-// Notes:
-// For start position and setting rotation, 0x4000 == 90 degrees.
 
 /*************************************************************************
  * Copyright 2022 Google LLC

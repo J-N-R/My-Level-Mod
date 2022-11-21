@@ -11,7 +11,8 @@ class IniReader {
 		std::vector<std::vector<std::string>> importLevelQueries;
 		IniReader(const char* path, const HelperFunctions& helperFunctions);
 		void loadIniOptions();
-		LoopHead** loadSplines();
+		LoopHead** readSplines();
+		LoopHead* readSpline(std::string filePath);
 		std::string getChaoGarden();
 		std::string getLevelID();
 

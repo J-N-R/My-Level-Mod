@@ -35,12 +35,14 @@ extern "C" {
 }
 
 // Required.
-// A Function 'Hook,' that automatically runs onLevelLoad() whenever the
-// LoadLevel internal function runs. Feel free to put logic here!
+// A Function 'Hook,' that automatically runs code whenever a the game has
+// loaded a level. Feel free to add logic here!
 void onLevelLoad();
-FunctionHook<void> InitCurrentLevelAndScreenCount_h(InitCurrentLevelAndScreenCount, onLevelLoad);
+FunctionHook<void> loadLevelHook(InitCurrentLevelAndScreenCount, onLevelLoad);
 void onLevelLoad() {
-	InitCurrentLevelAndScreenCount_h.Original();
+	loadLevelHook.Original();
+
+	// Loads rails/loops/etc into the level. Do not remove.
 	if (myLevelMod != nullptr) {
 		myLevelMod->onLevelHook();
 	}

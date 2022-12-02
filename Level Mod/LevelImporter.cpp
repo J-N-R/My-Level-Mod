@@ -12,7 +12,7 @@
  *    see My Level Mod debug messages.
  * 
  *    Currently maintained by https://github.com/J-N-R.
- *
+ * 
  *    If you have any questions, feel free to ask at the x-hax discord:
  *    https://discord.gg/gqJCF47
  */

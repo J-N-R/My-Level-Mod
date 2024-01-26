@@ -1,15 +1,15 @@
 /*
- * LevelImporter.cpp Version 4.1
+ * LevelImporter.cpp Version 4.2
  *
  * Description:
- *    A c++ class dedicated to making and importing levels into Sonic
- *    Adventure 2 easier. Using the simple replacement method as well
- *    as an exposed options ini file, it allows users to create level
- *    mods without writing any code.
+ *    A c++ class dedicated to making importing levels into Sonic Adventure 2
+ *    easier. Using assets provided by the mod folder and a level_options.ini
+ *    file, this class allows users to import levels into SA2 with minimal
+ *    coding knowledge.
  *
- *    All reports / error messages will be printed to SA2ModLoader's
- *    debug system. Enable 'file' in the SA2ModLoader debug menu to
- *    see My Level Mod debug messages.
+ *	  To debug issues with this code, enable SA2ModLoader's "file" debug system
+ *	  and check your Sonic Adventure 2 install folder for auto-generated log
+ *	  files.
  * 
  *    Currently maintained by https://github.com/J-N-R.
  * 
@@ -27,12 +27,16 @@
 #include <filesystem>
 #include <curl/curl.h>
 #include <vector>
-#define VERSION 4.1f
+#define VERSION 4.2f
 // By default, LevelImporter supports up to 1000 custom textures.
 // Change the number in here if you need more.
 #define NUMBER_OF_TEXTURES 1000
-// My Level Mod uses libcurl to connect to the internet to detect updates.
+// Whether My Level Mod should automatically check the internet for new updates.
+// Used to save an update notification to the mod folder.
 #define CHECK_FOR_UPDATE true
+// Whether My Level Mod should automatically attempt to fix mod file structure
+// issues. If issues are fixed, My Level Mod will require a restart.
+#define FIX_FILE_STRUCTURE true
 
 LevelImporter::LevelImporter(const char* path,
 		const HelperFunctions& helperFunctions)
@@ -42,37 +46,36 @@ LevelImporter::LevelImporter(const char* path,
 	this->iniReader = new IniReader(path, helperFunctions);
 }
 
+/**
+ * Dynamically imports levels by parsing level_options.ini. Will automatically
+ * check for updates to My Level Mod and fix potential file structure errors if
+ * those features are enabled.
+ */
 void LevelImporter::init() {
-	// Check for any updates.
+	iniReader->loadLevelOptions();
 	if (CHECK_FOR_UPDATE) {
 		checkForUpdate();
 	}
-	// Fix any file structure problems.
-	fixFileStructure();
+	if (FIX_FILE_STRUCTURE) {
+		fixFileStructure();
+	}
 
-	// Read from level_options.ini.
-	iniReader->loadIniOptions();
-
-	// Create simple importLevel() queries from read options.
+	// If a level id was provided in level_options.ini, perform a simple import.
 	if (iniReader->levelID != -1) {
 		importLevel();
 	}
-	// Create complex importLevel() queries from read options.
+
+	// If complex import queries were provided in level_options.ini, perform
+	// complex imports. Used when importing multiple levels with one mod.
 	for (std::vector<std::string> parameters : iniReader->importLevelQueries) {
 		switch (parameters.size()) {
 			case 1:
-				printDebug("Running function: importLevel(" + parameters[0] +
-					").");
 				importLevel(parameters[0]);
 				break;
 			case 2:
-				printDebug("Running function: importLevel(" + parameters[0] +
-					", " + parameters[1] + ").");
 				importLevel(parameters[0], parameters[1]);
 				break;
 			case 3:
-				printDebug("Running function: importLevel(" + parameters[0] +
-					", " + parameters[1] + ", " + parameters[2] + ").");
 				importLevel(parameters[0], parameters[1], parameters[2]);
 				break;
 			default:
@@ -83,39 +86,31 @@ void LevelImporter::init() {
 }
 
 /**
- * Imports a custom level over an existing level. Parameters are
- * optional.
+ * Imports a custom level over an existing level. All parameters are optional.
  *
- * @param [landTableName] - The original land table you want to replace. Uses
- *	  level id in level_options by default. Uses any .sa2blvl and .pak found by
- *	  default.
- * @param [levelFileName] - The .sa2blvl file you want to import. Uses
- *	  landTableName as file name by default.
- * @param [texturePakName] - Name of the .pak file you want to use. Uses
- *	  levelFileName for the pak name as default.
+ * @param [landTableName] - The name of the land table you want to replace.
+ *    If this parameter is not set, the land table replaced will be based on
+ *    the ID set in level_options.ini, and will use any .sa2blvl and .pak file
+ *	  found in the mod folder.
+ * @param [levelFileName] - The name of the .sa2blvl file in the mod folder that
+ *	  will imported, uses the landTableName by default.
+ * @param [texturePakName] - The name of the .pak file in the mod folder that
+ *	  will be imported, uses the levelFileName by default.
  */
 void LevelImporter::importLevel(std::string landTableName,
 		std::string levelFileName, std::string texturePakName) {
-	// If no parameters are given, use levelID from iniReader and any .pak /
-	// .sa2blvl file you can find.
+	// Perform simple import if land table is missing.
 	if (landTableName.empty()) {
-		if (iniReader->levelID >= 67) {
-			landTableName = iniReader->getChaoGarden();
-		}
-		else if (iniReader->levelID == -1) {
+		if (iniReader->levelID == -1) {
 			printDebug("(Warning) landTableName and levelID not found. "
 				"Cancelling level import.");
 			return;
 		}
-		else {
-			landTableName = "objLandTable00" + iniReader->getLevelID();
-		}
-		levelFileName = landTableName;
-		texturePakName = landTableName;
+		landTableName = getLandTableName(iniReader->levelID);
 
-		// Try to find pak & sa2blvl files to use.
+		// Try to find pak & sa2blvl files to use in the mod folder.
 		const std::string gdPCPath = std::string(path) + "\\gd_PC\\";
-		const std::string PRSPath = std::string(path) + "\\gd_PC\\PRS\\";
+		const std::string PRSPath = gdPCPath + "PRS\\";
 		for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
 			const auto filePath = file.path();
 			if (filePath.extension().string() == ".sa2blvl") {
@@ -129,14 +124,14 @@ void LevelImporter::importLevel(std::string landTableName,
 			}
 		}
 	}
-	// If only a landtable is given, assume .sa2blvl and .pak file are named
-	// after the landtable. (e.g. objLandTable0013.sa2blvl)
+	// If only a land table is given, assume .sa2blvl and .pak file are named
+	// after the land table (e.g. objLandTable0013.sa2blvl).
 	else if (levelFileName.empty()) {
 		levelFileName = landTableName;
 		texturePakName = landTableName;
 	}
-	// If a landtable and an .sa2blvl file is given, assume the texture pak
-	// is named after the .sa2blvl file.
+	// If an .sa2blvl file is given, assume the texture pak is named after the
+	// .sa2blvl file.
 	else if (texturePakName.empty()) {
 		// Remove file extension from levelFileName and texturePakName.
 		size_t lastDot = levelFileName.find_last_of(".");
@@ -158,7 +153,7 @@ void LevelImporter::importLevel(std::string landTableName,
 		}
 	}
 
-	// Grab original landtable and replace with ours.
+	// Grab original land table and replace with custom land table.
 	HMODULE v0 = **datadllhandle;
 	LandTable* Land = (LandTable*)GetProcAddress(v0, landTableName.c_str());
 	try {
@@ -171,11 +166,12 @@ void LevelImporter::importLevel(std::string landTableName,
 			"properly.");
 		printDebug(e.what());
 	}
+
+	printDebug("Attempting to import level: " + levelFileName + " with texture "
+		"pack: " + texturePakName + " over land table: " + landTableName + ".");
 	
-	// Set landtable to use our custom textures. Here, I use a vector stored
-	// in the class so that the variables and references stay persistent
-	// after they leave scope. This allows me to programatically import
-	// multiple levels.
+	// Set land table to use custom textures. A global vector is used so multiple
+	// texture PAKs can be used and persist outside of this function.
 	NJS_TEXNAME customTextureNames[NUMBER_OF_TEXTURES]{};
 	customTexnames.push_back(
 		std::vector<NJS_TEXNAME>(std::begin(customTextureNames),
@@ -187,72 +183,138 @@ void LevelImporter::importLevel(std::string landTableName,
 	// (Safety feature) disable blockbit system, entire level will be loaded
 	// at once.
 	WriteData<5>((void*)0x5DCE2D, 0x90);
+	printDebug("Import successful.");
 }
 
-// Automatically detect and attempt to fix files being in the wrong folder.
-// Game will unforunately need a restart.
+/**
+ * Since Chao gardens are not numbered in the game, this function attempts to
+ * number the Chao gardens based on the pre-existing numbering pattern of
+ * levels. The final numbered level is 59 (Death Chamber 2P) and assuming the
+ * boss levels were numbered, the final boss is 66 (Biolizard). Therefore, Chao
+ * gardens level ids start at 67 (objLandTableLobby000).
+ *
+ * @returns an empty string if a land table is not found.
+ */
+std::string LevelImporter::getLandTableName(int levelID) {
+	if (levelID < 60) {
+		return "objLandTable00" + levelID;
+	}
+	switch (levelID) {
+		case 67:
+			return "objLandTableLobby000";
+		case 68:
+			return "objLandTableLobby00k";
+		case 69:
+			return "objLandTableLobby0dk";
+		case 70:
+			return "objLandTableLobbyh0k";
+		case 71:
+			return "objLandTableLobbyhdk";
+		case 72:
+			return "objLandTableLobby";
+		case 73:
+			return "objLandTableDark";
+		case 74:
+			return "objLandTableHero";
+		case 75:
+			return "objLandTableNeut";
+		case 76:
+			return "objLandTableStadium";
+		case 77:
+			return "objLandTableEntrance";
+		case 78:
+			return "objLandTableRace";
+		case 79:
+			return "objLandTableRaceDark";
+		case 80:
+			return "objLandTableRaceHero";
+		case 81:
+			return "objLandTableChaoKarate";
+		case 82:
+			return "objLandTableKinderBl";
+		case 83:
+			return "objLandTableKinderCl";
+		case 84:
+			return "objLandTableKinderCo";
+		case 85:
+			return "objLandTableKinderFo";
+		case 86:
+			return "objLandTableKinderHe";
+		case 87:
+			return "objLandTableKinderHo";
+		case 88:
+			return "objLandTableKinderPr";
+		case 89:
+			return "objLandTableKinderLi";
+		case 90:
+			return "objLandTableKinderPl";
+		default:
+			return "";
+	}
+}
+
+/**
+ * Automatically detect and attempt to fix files being in the wrong folder. If
+ * any fixes occur, the game will unforunately need a restart.
+ */ 
 void LevelImporter::fixFileStructure() {
 	const std::string gdPCPath = std::string(path) + "\\gd_PC\\";
-	const std::string PRSPath = std::string(path) + "\\gd_PC\\PRS\\";
-
+	const std::string PRSPath = gdPCPath + "PRS\\";
 	for (const auto& file : std::filesystem::directory_iterator(path)) {
 		const auto filePath = file.path();
-
 		if (filePath.extension().string() == ".sa2blvl") {
-			printDebug("(ERROR) Incorrect level file position detected.");
-
+			printDebug("(ERROR) The level file has been detected to be in the "
+				"wrong folder.");
 			if (std::rename(filePath.string().c_str(),
 					(gdPCPath + filePath.filename().string()).c_str()) == 0) {
-				printDebug("Successfully moved level file.");
-				printDebug("Expect a game crash, please run game again.");
+				printDebug("Successfully moved the level file to the folder "
+					"~yourModFolder\\gd_PC\\.");
+				printDebug("Expect a game crash, please run the game again.");
 			}
 			else {
-				printDebug("(Warning) Error moving level file to the right "
-					"position.");
-				printDebug("(Warning) Level file should be at"
-					"(\\gd_PC\\(your-level).sa2blvl).");
+				printDebug("(Warning) Error moving the level file to the "
+					"right folder.");
+				printDebug("(Warning) The level file should be saved to"
+					"(~yourModFolder\\gd_PC\\(your-level).sa2blvl).");
 			}
 		}
 		else if (filePath.extension().string() == ".pak") {
-			printDebug("(ERROR) Incorrect texture pack position detected.");
-
+			printDebug("(ERROR) The texture pack file has been detected to be "
+				"in the wrong folder.");
 			if (std::rename(filePath.string().c_str(),
 					(PRSPath + filePath.filename().string()).c_str()) == 0) {
-				printDebug("Successfully moved texture pack file.");
-				printDebug("Expect a game crash, please run game again.");
+				printDebug("Successfully moved the texture pack file to the "
+					"folder ~yourModFolder\\gd_PC\\.");
+				printDebug("Expect a game crash, please run the game again.");
 			}
 			else {
-				printDebug("(Warning) Error moving texture pack file to the "
-					"right position.");
-				printDebug("(Warning) Texture pack file should be at "
-					"(\\gd_PC\\PRS\\(your-texture-pak).pak).");
+				printDebug("(Warning) Error moving the texture pack file to "
+					"the right folder.");
+				printDebug("(Warning) The texture pack file should be saved "
+					"to (~yourModFolder\\gd_PC\\PRS\\(your-texture-pak).pak).");
 			}
 		}
 	}
-
 	if (iniReader->levelID != -1) {
 		for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
 			const auto filePath = file.path();
-
+			std::string levelIDString = std::to_string(iniReader->levelID);
 			if (filePath.extension().string() == ".bin" &&
 					filePath.filename().string()
-						.find(iniReader->getLevelID()) == std::string::npos) {
+						.find(levelIDString) == std::string::npos) {
 				std::stringstream ss(filePath.filename().string());
 				std::vector<std::string> tokens;
 				std::string token;
 				while (getline(ss, token, '_')) {
 					tokens.push_back(token);
 				}
-
-				std::string fileName = "set00" + iniReader->getLevelID();
+				std::string fileName = "set00" + levelIDString;
 				tokens.erase(tokens.begin());
 				for (std::string _token : tokens) {
 					fileName += "_" + _token;
 				}
-
-				printDebug("(ERROR) SET file found not matching level ID: "
-					+ iniReader->getLevelID() + ".");
-
+				printDebug("(ERROR) A SET file that doesn't match the level ID: "
+					+ levelIDString + " was found.");
 				if (std::rename(filePath.string().c_str(),
 						(gdPCPath + fileName).c_str()) == 0) {
 					printDebug("Successfully renamed " +
@@ -260,46 +322,47 @@ void LevelImporter::fixFileStructure() {
 					printDebug("Expect a game crash, please run game again.");
 				}
 				else {
-					printDebug("(ERROR) Error renaming SET file.");
-					printDebug("(ERROR) SET file should be named" + fileName +
-						".");
+					printDebug("(ERROR) Error renaming the SET file to match "
+						"the level ID.");
+					printDebug("(ERROR) The SET file should be named " +
+						fileName + ".");
 				}
 			}
 			else if (filePath.extension().string() == ".pak") {
-				printDebug("(ERROR) Incorrect texture pack position detected.");
-
+				printDebug("(ERROR) The texture pack file has been detected to be "
+					"in the wrong folder.");
 				if (std::rename(filePath.string().c_str(),
-						(PRSPath + filePath.filename().string()).c_str()) == 0) {
-					printDebug("Successfully moved texture pack file.");
-					printDebug("Expect a game crash, please run game again.");
+					(PRSPath + filePath.filename().string()).c_str()) == 0) {
+					printDebug("Successfully moved the texture pack file to the "
+						"folder ~yourModFolder\\gd_PC\\.");
+					printDebug("Expect a game crash, please run the game again.");
 				}
 				else {
-					printDebug("(Warning) Error moving texture pack file to the "
-						"right position.");
-					printDebug("(Warning) Texture pack file should be at "
-						"(\\gd_PC\\PRS\\(your-texture-pak).pak).");
+					printDebug("(Warning) Error moving the texture pack file to "
+						"the right folder.");
+					printDebug("(Warning) The texture pack file should be saved "
+						"to (~yourModFolder\\gd_PC\\PRS\\(your-texture-pak).pak).");
 				}
 			}
 		}
 	}
 }
 
-// Detect if an update is available for this mod and notify if any.
+/**
+ * Check the internet for an update to My Level Mod and save a notification
+ * file in the mod folder if an update is detected.
+ */
 void LevelImporter::checkForUpdate() {
 	printDebug("Checking for updates...");
-
 	curl_global_init(CURL_GLOBAL_ALL);
-
 	std::string result{ };
 	CURL* curl = curl_easy_init();
-
 	if (!curl) {
 		printDebug("(Warning) Could not check for update. "
 			"[Curl will not instantiate]");
 		return;
 	}
-
-	// No cache.
+	// Disable cached HTML requests.
 	struct curl_slist* headers = NULL;
 	headers = curl_slist_append(headers, "Cache-control: no-cache");
 
@@ -311,20 +374,17 @@ void LevelImporter::checkForUpdate() {
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, this->writer);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &result);
 	CURLcode curlResult = curl_easy_perform(curl);
-
 	if (curlResult != CURLE_OK) {
 		printDebug("(Warning) Could not check for update. "
 			"[Error reaching internet]");
 		return;
 	}
 
-	std::string updatePath = std::string(path) + "\\MANUALLY UPDATE TO VERSION "
-		+ std::to_string(std::stof(result)) + ".txt";
-
-	// If they need to update, add update file.
+	// Save a notification file if an update is detected.
 	if (VERSION < std::stof(result)) {
 		printDebug("Update detected! Creating update reminder.");
-
+		std::string updatePath = std::string(path) + "\\MANUALLY UPDATE TO "
+			"VERSION " + std::to_string(std::stof(result)) + ".txt";
 		if (!std::filesystem::exists(updatePath)) {
 			std::ofstream updateFile;
 			updateFile.open(updatePath, std::ofstream::out);
@@ -337,30 +397,29 @@ void LevelImporter::checkForUpdate() {
 			updateFile.close();
 		}
 	}
-	// If they don't need to update, but the update file is there, get rid of it.
+	// Delete existing notification files if My Level Mod is up to date.
 	else {
 		printDebug("Mod up to date.");
 		bool cleaned = false;
-
 		for (const auto& file : std::filesystem::directory_iterator(path)) {
 			std::string filePath = file.path().string();
-
 			if (filePath.find("UPDATE") != std::string::npos) {
 				std::filesystem::remove(filePath);
 				cleaned = true;
 			}
 		}
-
 		if (cleaned) {
 			printDebug("Cleaned up update reminders.");
 		}
 	}
-
 	curl_easy_cleanup(curl);
 	curl_global_cleanup();
 }
 
-// Activate Simple Death Plane if enabled.
+/**
+ * Enables features that require constant frame checking to work. Currently
+ * used to enable the simple death plane in levels imported by level id.
+ */
 void LevelImporter::onFrame() {
 	if (iniReader->levelID != -1 && GameState == GameStates_Ingame &&
 			CurrentLevel == iniReader->levelID && 
@@ -372,7 +431,10 @@ void LevelImporter::onFrame() {
 	}
 }
 
-// Load splines into the level when the internal "LoadLevel" function gets called.
+/**
+ * Enables features that require running when a level loads. Currently used to
+ * enable loading splines for levels imported by level id.
+ */
 void LevelImporter::onLevelHook() {
 	if (iniReader->levelID != -1 && CurrentLevel == iniReader->levelID) {
 		printDebug("Level load detected. Loading splines.");
@@ -384,12 +446,12 @@ void LevelImporter::onLevelHook() {
 	}
 }
 
-// Helper function to print debug messages.
+/** Helper function to print debug messages. */
 void LevelImporter::printDebug(std::string message) {
 	PrintDebug(("[My Level Mod] " + message).c_str());
 }
 
-// Helper function for checkForUpdate().
+/** Helper function for checkForUpdate(). */
 int LevelImporter::writer(char* data, size_t size,
 		size_t nmemb, std::string* buffer) {
 	int result = 0;

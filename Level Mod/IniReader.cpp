@@ -1,12 +1,16 @@
 /*
- * IniReader.cpp v4.1
+ * IniReader.cpp v4.2
  *
  * Description:
- *   Script for reading the content of ini files for My Level Mod.
- *   
- *   Ini file reader for My Level Mod and SA2 modding purposes. Can read from a
- *   'level_options.ini' file, and read from spline files and return official
- *   LoopHead (spline) objects.
+ *   A c++ class dedicated to parsing ini files for My Level Mod. This class
+ *   parses over two types of ini files:
+ * 
+ *   The level_options.ini file:
+ *      This file determines which levels to import and what level features
+ *      to enable.
+ *
+ *	 Spline files:
+ *		Files that define paths for loops, rails, and enemy paths.
  */
 
 #include "pch.h"
@@ -31,22 +35,26 @@ IniReader::IniReader(const char* path,
 	this->hasSimpleDeathPlane = false;
 }
 
-// Read and configure options from 'level_options.ini.' For any devs out there,
-// this is where you can add/create new options.
-void IniReader::loadIniOptions() {
+/**
+ * Parses through the level_options.ini file to find out which levels to import
+ * and which level features should be enabled. It is important to note that
+ * level features only work for levels imported by level id.
+ */
+void IniReader::loadLevelOptions() {
 	std::ifstream iniFile;
 	iniFile.open(optionsPath, std::ios::in);
-
-	// Read through level_options.ini line by line, looking for an equals sign.
-	// 'token' will then be the option name. Using getline again grabs the
-	// value.
 	if (!iniFile.is_open()) {
 		printDebug("(Warning) Error reading from options file. (is it"
 			"missing?)");
+		return;
 	}
-
 	printDebug("Reading from level_options.");
 
+	// Read through level_options.ini line by line, searching for lines with an
+	// equal sign. Then assume the left side of the equal sign is a variable,
+	// and the right side is a value. Stop searching once you've reached the
+	// explanations section of the level_options.ini file.
+	// TODO: Replace manual reads with X-hax's IniFile.cpp
 	std::string line;
 	while (line.find("Explanations:") == std::string::npos) {
 		std::getline(iniFile, line);
@@ -59,16 +67,6 @@ void IniReader::loadIniOptions() {
 				try {
 					levelID = std::stoi(value);
 					printDebug("Level ID set to " + value + ".");
-
-					if (levelID >= 67) {
-						printDebug("Chao Garden level ID detected.");
-						printDebug("Will port level over " + getChaoGarden() +
-							".");
-					}
-					else {
-						printDebug("Will port level over objLandTable00" +
-							value + ".");
-					}
 				}
 				catch (const std::exception& e) {
 					printDebug("(Warning) Error reading level import ID.");
@@ -98,7 +96,6 @@ void IniReader::loadIniOptions() {
 						"Defaulting to 0, 0, 0.");
 					printDebug(e.what());
 				}
-
 				NJS_VECTOR coordinates{ coords[0], coords[1], coords[2] };
 				StartPosition startPos = {
 							(short)levelID,
@@ -148,7 +145,6 @@ void IniReader::loadIniOptions() {
 			else if (key == "Import_Level") {
 				const auto ignoreThis = std::remove(value.begin(), value.end(), ' ');
 				std::istringstream ss(value);
-
 				printDebug("Import Level query found!");
 				printDebug("Building query with these parameters: " + value);
 
@@ -170,8 +166,10 @@ void IniReader::loadIniOptions() {
 	iniFile.close();
 }
 
-// Automatically reads and generates spline objects from spline ini files.
-// Checks both gd_PC folder and paths folder for spline files.
+/**
+ * Automatically detect and attempt to read all Spline files. This function
+ * checks both the gd_PC folder and a "paths" folder for Spline files.
+ */
 LoopHead** IniReader::readSplines() {
 	std::vector<LoopHead*> splines{};
 	std::string pathToPathsFolder = std::string(gdPCPath) + "\\Paths";
@@ -179,7 +177,6 @@ LoopHead** IniReader::readSplines() {
 	// Find ini files in the gd_PC folder, assume they are spline files.
 	for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
 		std::string filePath = file.path().string();
-
 		if (filePath.find(".ini") != std::string::npos) {
 			printDebug("Spline file \"" + filePath + "\" found.");
 			LoopHead* spline = readSpline(filePath);
@@ -204,17 +201,13 @@ LoopHead** IniReader::readSplines() {
 			}
 		}
 	}
-	
 	if (splines.size() != 0) {
 		printDebug(std::to_string(splines.size()) + " rail spline(s) "
 			"successfully added.");
-
 		const int size = splines.size() + 1;
 		LoopHead** splinesArray = new LoopHead*[size];
 		std::copy(splines.begin(), splines.end(), splinesArray);
-
 		splinesArray[size - 1] = nullptr;
-
 		return splinesArray;
 	}
 
@@ -223,24 +216,21 @@ LoopHead** IniReader::readSplines() {
 }
 
 /**
- * Reads a given spline ini file and returns a single spline object. Returns
- * nullptr if something goes wrong.
+ * Attempts to read and generate a LoopHead object from a given Spline file.
+ * Returns nullptr if something goes wrong.
  *
  * @param [filePath] - The full file path to your ini file.
  */
 LoopHead* IniReader::readSpline(std::string filePath) {
 	std::ifstream splineFile;
 	splineFile.open(filePath, std::ios::in);
-
 	if (!splineFile.is_open()) {
 		printDebug("(Warning) Error opening spline file.");
 		return nullptr;
 	}
-
 	float totalDistance{};
 	std::string code{};
 	std::vector<LoopPoint> points{};
-
 	try {
 		// Read spline file header.
 		std::string line;
@@ -249,7 +239,6 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 			if (line.find('=') != std::string::npos) {
 				std::string key = line.substr(0, line.find('='));
 				std::string value = line.substr(line.find('=') + 1);
-
 				if (key == "TotalDistance") {
 					totalDistance = std::stof(value);
 				}
@@ -265,14 +254,12 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 			short xRot{}, zRot{};
 			float distance{};
 			float coords[3]{};
-
 			std::getline(splineFile, line);
 			while (line.find("[") == std::string::npos &&
 				!splineFile.eof()) {
 				if (line.find('=') != std::string::npos) {
 					std::string key = line.substr(0, line.find('='));
 					std::string value = line.substr(line.find('=') + 1);
-
 					if (key == "XRotation") {
 						xRot = (short)std::stoi(value, 0, 16);
 					}
@@ -288,7 +275,6 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 							std::remove(value.begin(), value.end(),
 								' ');
 						value.erase(end_pos, value.end());
-
 						std::istringstream ss(value);
 						try {
 							std::string token{};
@@ -324,7 +310,6 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 			};
 			points.push_back(point);
 		}
-
 		LoopHead* spline = new LoopHead;
 		spline->anonymous_0 = (int16_t)1;
 		spline->Count = (int16_t)points.size();
@@ -344,9 +329,7 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 				"Deleting spline.");
 			return nullptr;
 		}
-
 		std::copy(points.begin(), points.end(), spline->Points);
-
 		splineFile.close();
 		return spline;
 	}
@@ -356,69 +339,8 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 			"spline file.");
 		printDebug(e.what());
 	}
-
 	splineFile.close();
 	return nullptr;
-}
-
-// Convenience method used to grab level id (right now used for debug printing).
-std::string IniReader::getLevelID() {
-	return std::to_string(levelID);
-}
-
-std::string IniReader::getChaoGarden() {
-	switch (levelID) {
-		case 67:
-			return "objLandTableLobby000";
-		case 68:
-			return "objLandTableLobby00k";
-		case 69:
-			return "objLandTableLobby0dk";
-		case 70:
-			return "objLandTableLobbyh0k";
-		case 71:
-			return "objLandTableLobbyhdk";
-		case 72:
-			return "objLandTableLobby";
-		case 73:
-			return "objLandTableDark";
-		case 74:
-			return "objLandTableHero";
-		case 75:
-			return "objLandTableNeut";
-		case 76:
-			return "objLandTableStadium";
-		case 77:
-			return "objLandTableEntrance";
-		case 78:
-			return "objLandTableRace";
-		case 79:
-			return "objLandTableRaceDark";
-		case 80:
-			return "objLandTableRaceHero";
-		case 81:
-			return "objLandTableChaoKarate";
-		case 82:
-			return "objLandTableKinderBl";
-		case 83:
-			return "objLandTableKinderCl";
-		case 84:
-			return "objLandTableKinderCo";
-		case 85:
-			return "objLandTableKinderFo";
-		case 86:
-			return "objLandTableKinderHe";
-		case 87:
-			return "objLandTableKinderHo";
-		case 88:
-			return "objLandTableKinderPr";
-		case 89:
-			return "objLandTableKinderLi";
-		case 90:
-			return "objLandTableKinderPl";
-		default:
-			return "";
-	}
 }
 
 // Debug message helper.

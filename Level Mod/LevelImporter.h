@@ -12,6 +12,7 @@ class LevelImporter {
 		void init();
 		void onFrame();
 		void onLevelHook();
+		std::string getLandTableName(int levelID);
 
 	private:
 		float version;

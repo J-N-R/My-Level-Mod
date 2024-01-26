@@ -10,11 +10,9 @@ class IniReader {
 		float simpleDeathPlane;
 		std::vector<std::vector<std::string>> importLevelQueries;
 		IniReader(const char* path, const HelperFunctions& helperFunctions);
-		void loadIniOptions();
+		void loadLevelOptions();
 		LoopHead** readSplines();
 		LoopHead* readSpline(std::string filePath);
-		std::string getChaoGarden();
-		std::string getLevelID();
 
 	private:
 		const char* optionsPath;

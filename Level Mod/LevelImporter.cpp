@@ -59,7 +59,7 @@ void LevelImporter::init() {
 	if (FIX_FILE_STRUCTURE) {
 		fixFileStructure();
 	}
-
+	
 	// If a level id was provided in level_options.ini, perform a simple import.
 	if (iniReader->levelID != -1) {
 		importLevel();
@@ -197,7 +197,7 @@ void LevelImporter::importLevel(std::string landTableName,
  */
 std::string LevelImporter::getLandTableName(int levelID) {
 	if (levelID < 60) {
-		return "objLandTable00" + levelID;
+		return "objLandTable00" + std::to_string(levelID);
 	}
 	switch (levelID) {
 		case 67:

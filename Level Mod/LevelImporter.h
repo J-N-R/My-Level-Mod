@@ -1,7 +1,6 @@
 #pragma once
-#include "SA2ModLoader.h"
+#include "pch.h"
 #include "IniReader.h"
-#include "FunctionHook.h"
 #include <string>
 #include <vector>
 

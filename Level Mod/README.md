@@ -8,3 +8,7 @@
     * The parameters are optional, see the inlined documentation to learn more.
 
 **IniReader.cpp** - A library that automates reading from level_options.ini, and can read Spline files.
+* Main functions:
+  * readLevelOptions(): Reads and stores options from level_options.ini, which is then used by LevelImporter.
+  * readSplines(): Reads all Splines in the mod folder, and loads it into your level.
+  * readSpline(filePath): Reads a given Spline file and returns Spline information. Useful for manually reading splines.

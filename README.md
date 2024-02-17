@@ -3,7 +3,7 @@ A tool that makes importing custom levels into Sonic Adventure 2 easy for anyone
 of this project is to do away with all code requirements, and let modders focus on creativity
 and building their own level.
 
-With this tool, modders can simply drag and drop their level files, and play! An exposed
+With this tool, modders can simply drag and drop their level files, and play. An exposed
 'level_options.ini' file allows modders to quickly add features into their level without
 code, and more features are constantly being added. This tool also acts as a mod template,
 so once you've added your level, feel free to republish as your own mod to share with friends.
@@ -26,20 +26,14 @@ Feel free to contribute or message me for any information! J-N-R
 * Auto update detection and notifications.
 * Adds optional features through an 'options' file, with support for:
    * Multiple level imports
-   
    * Import over chao garden
-
    * Spawn location
-   
    * Victory pose location
-   
    * Death plane (have Sonic die under a certain y-level)
-  
    * Specific level ID you would like to replace
    
 * Comes with 2 public c++ libraries for those who do know how to code:
    * LevelImporter.cpp - A tool that lets you easily import and modify levels. (Requires IniReader)
-   
    * IniReader.cpp - A tool that can read options from an ini file, and can load spline/rail data from files.
    
 * Completely open source, and very easy to add your own custom code (See MyLevelMod.cpp).

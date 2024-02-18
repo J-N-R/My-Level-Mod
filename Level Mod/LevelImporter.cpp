@@ -52,7 +52,7 @@ LevelImporter::LevelImporter(const char* path,
  * those features are enabled.
  */
 void LevelImporter::init() {
-	iniReader->loadLevelOptions();
+	iniReader->readLevelOptions();
 	if (CHECK_FOR_UPDATE) {
 		checkForUpdate();
 	}
@@ -62,7 +62,7 @@ void LevelImporter::init() {
 	
 	// If a level id was provided in level_options.ini, perform a simple import.
 	if (iniReader->levelID != -1) {
-		importLevel();
+		importLevel(iniReader->levelID);
 	}
 
 	// If complex import queries were provided in level_options.ini, perform
@@ -86,71 +86,69 @@ void LevelImporter::init() {
 }
 
 /**
- * Imports a custom level over an existing level. All parameters are optional.
- *
+ * Imports a custom level over an existing level through its levelID, using
+ * any sa2blvl and PAK file found in the mod folder.
+ */
+void LevelImporter::importLevel(int levelID) {
+	if (iniReader->levelID == -1) {
+		printDebug("(Warning) landTableName and levelID not found. "
+			"Cancelling level import.");
+		return;
+	}
+	// Try to find pak & sa2blvl files to use in the mod folder.
+	const std::string gdPCPath = std::string(path) + "\\gd_PC\\";
+	const std::string PRSPath = gdPCPath + "PRS\\";
+	std::string levelFileName = "", texturePakName = "";
+	for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
+		const auto filePath = file.path();
+		if (filePath.extension().string() == ".sa2blvl") {
+			levelFileName = filePath.stem().string();
+		}
+	}
+	for (const auto& file : std::filesystem::directory_iterator(PRSPath)) {
+		const auto filePath = file.path();
+		if (filePath.extension().string() == ".pak") {
+			texturePakName = filePath.stem().string();
+		}
+	}
+	importLevel(getLandTableName(iniReader->levelID), levelFileName, texturePakName);
+}
+
+/**
+ * Imports a custom level over an existing level, using the landTableName as
+ * the levelFileName and texturePakName.
+ */
+void LevelImporter::importLevel(std::string landTableName) {
+	importLevel(landTableName, landTableName, landTableName);
+}
+
+/**
+ * Imports a custom level over an existing level, using the levelFileName as
+ * the texturePakName.
+ */
+void LevelImporter::importLevel(std::string landTableName, std::string levelFileName) {
+	importLevel(landTableName, levelFileName, levelFileName);
+}
+
+/** 
+ * Imports a custom level over an existing level.
+ * 
  * @param [landTableName] - The name of the land table you want to replace.
- *    If this parameter is not set, the land table replaced will be based on
- *    the ID set in level_options.ini, and will use any .sa2blvl and .pak file
- *	  found in the mod folder.
- * @param [levelFileName] - The name of the .sa2blvl file in the mod folder that
- *	  will imported, uses the landTableName by default.
- * @param [texturePakName] - The name of the .pak file in the mod folder that
- *	  will be imported, uses the levelFileName by default.
+ * @param [levelFileName] - The name of the .sa2blvl file in your mod folder
+ *    to use for the import.
+ * @param [texturePakName] - The name of the .pak file in your mod folder to
+ *    use for the import.
  */
 void LevelImporter::importLevel(std::string landTableName,
 		std::string levelFileName, std::string texturePakName) {
-	// Perform simple import if land table is missing.
-	if (landTableName.empty()) {
-		if (iniReader->levelID == -1) {
-			printDebug("(Warning) landTableName and levelID not found. "
-				"Cancelling level import.");
-			return;
-		}
-		landTableName = getLandTableName(iniReader->levelID);
-
-		// Try to find pak & sa2blvl files to use in the mod folder.
-		const std::string gdPCPath = std::string(path) + "\\gd_PC\\";
-		const std::string PRSPath = gdPCPath + "PRS\\";
-		for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
-			const auto filePath = file.path();
-			if (filePath.extension().string() == ".sa2blvl") {
-				levelFileName = filePath.stem().string();
-			}
-		}
-		for (const auto& file : std::filesystem::directory_iterator(PRSPath)) {
-			const auto filePath = file.path();
-			if (filePath.extension().string() == ".pak") {
-				texturePakName = filePath.stem().string();
-			}
-		}
+	// Remove file extension from levelFileName and texturePakName.
+	size_t lastDot = levelFileName.find_last_of(".");
+	if (lastDot != std::string::npos) {
+		levelFileName = levelFileName.substr(0, lastDot);
 	}
-	// If only a land table is given, assume .sa2blvl and .pak file are named
-	// after the land table (e.g. objLandTable0013.sa2blvl).
-	else if (levelFileName.empty()) {
-		levelFileName = landTableName;
-		texturePakName = landTableName;
-	}
-	// If an .sa2blvl file is given, assume the texture pak is named after the
-	// .sa2blvl file.
-	else if (texturePakName.empty()) {
-		// Remove file extension from levelFileName and texturePakName.
-		size_t lastDot = levelFileName.find_last_of(".");
-		if (lastDot != std::string::npos) {
-			levelFileName = levelFileName.substr(0, lastDot);
-		}
-		texturePakName = levelFileName;
-	}
-	// If everything is given, use given file names.
-	else {
-		// Remove file extension from levelFileName and texturePakName.
-		size_t lastDot = levelFileName.find_last_of(".");
-		if (lastDot != std::string::npos) {
-			levelFileName = levelFileName.substr(0, lastDot);
-		}
-		lastDot = texturePakName.find_last_of(".");
-		if (lastDot != std::string::npos) {
-			texturePakName = texturePakName.substr(0, lastDot);
-		}
+	lastDot = texturePakName.find_last_of(".");
+	if (lastDot != std::string::npos) {
+		texturePakName = texturePakName.substr(0, lastDot);
 	}
 
 	// Grab original land table and replace with custom land table.

@@ -7,7 +7,10 @@
 class LevelImporter {
 	public:
 		LevelImporter(const char* path, const HelperFunctions& helperFunctions);
-		void importLevel(std::string landTableName = "", std::string levelFileName = "", std::string texturePakName = "");
+		void importLevel(int levelID);
+		void importLevel(std::string landTableName);
+		void importLevel(std::string landTableName, std::string levelFileName);
+		void importLevel(std::string landTableName, std::string levelFileName, std::string texturePakName);
 		void init();
 		void onFrame();
 		void onLevelHook();

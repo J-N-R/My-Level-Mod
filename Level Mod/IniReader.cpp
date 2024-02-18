@@ -40,7 +40,7 @@ IniReader::IniReader(const char* path,
  * and which level features should be enabled. It is important to note that
  * level features only work for levels imported by level id.
  */
-void IniReader::loadLevelOptions() {
+void IniReader::readLevelOptions() {
 	std::ifstream iniFile;
 	iniFile.open(optionsPath, std::ios::in);
 	if (!iniFile.is_open()) {

@@ -31,12 +31,13 @@
 // By default, LevelImporter supports up to 1000 custom textures.
 // Change the number in here if you need more.
 #define NUMBER_OF_TEXTURES 1000
-// Whether My Level Mod should automatically check the internet for new updates.
-// Used to save an update notification to the mod folder.
-#define CHECK_FOR_UPDATE true
 // Whether My Level Mod should automatically attempt to fix mod file structure
 // issues. If issues are fixed, My Level Mod will require a restart.
 #define FIX_FILE_STRUCTURE true
+// Whether My Level Mod should automatically check the internet for new updates.
+// Used to save an update notification to the mod folder.
+#define CHECK_FOR_UPDATE true
+#define UPDATE_URL "https://raw.githubusercontent.com/J-N-R/My-Level-Mod/master/VERSION.txt"
 
 LevelImporter::LevelImporter(const char* modFolderPath,
 		const HelperFunctions& helperFunctions)
@@ -363,21 +364,18 @@ void LevelImporter::checkForUpdate() {
 	headers = curl_slist_append(headers, "Cache-control: no-cache");
 
 	// Read version number from github, store result as string.
-	curl_easy_setopt(curl, CURLOPT_URL,
-		"https://raw.githubusercontent.com/J-N-R/"
-			"My-Level-Mod/master/VERSION.txt");
+	curl_easy_setopt(curl, CURLOPT_URL, UPDATE_URL);
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, this->writer);
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &result);
 	CURLcode curlResult = curl_easy_perform(curl);
 	if (curlResult != CURLE_OK) {
-		printDebug("(Warning) Could not check for update. "
-			"[Error reaching internet]");
-		return;
+		printDebug("(Warning) Could not check for update. [" +
+			std::string(curl_easy_strerror(curlResult)) + "]");
 	}
 
 	// Save a notification file if an update is detected.
-	if (VERSION < std::stof(result)) {
+	else if (VERSION < std::stof(result)) {
 		printDebug("Update detected! Creating update reminder.");
 		std::string updatePath = modFolderPath + "\\MANUALLY UPDATE TO "
 			"VERSION " + std::to_string(std::stof(result)) + ".txt";

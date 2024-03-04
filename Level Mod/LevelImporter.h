@@ -3,6 +3,7 @@
 #include "IniReader.h"
 #include <string>
 #include <vector>
+#include <curl/curl.h>
 
 class LevelImporter {
 	public:

@@ -38,12 +38,14 @@
 // issues. If issues are fixed, My Level Mod will require a restart.
 #define FIX_FILE_STRUCTURE true
 
-LevelImporter::LevelImporter(const char* path,
+LevelImporter::LevelImporter(const char* modFolderPath,
 		const HelperFunctions& helperFunctions)
 			: helperFunctions(helperFunctions) {
-	this->path = path;
+	this->modFolderPath = std::string(modFolderPath);
+	this->gdPCPath = std::string(modFolderPath).append("\\gd_PC\\");
+	this->PRSPath = std::string(gdPCPath).append("PRS\\");
 	this->version = VERSION;
-	this->iniReader = new IniReader(path, helperFunctions);
+	this->iniReader = new IniReader(modFolderPath, helperFunctions);
 }
 
 /**
@@ -60,7 +62,7 @@ void LevelImporter::init() {
 		fixFileStructure();
 	}
 	
-	// If a level id was provided in level_options.ini, perform a simple import.
+	// If a level ID was provided in level_options.ini, perform a simple import.
 	if (iniReader->levelID != -1) {
 		importLevel(iniReader->levelID);
 	}
@@ -86,7 +88,7 @@ void LevelImporter::init() {
 }
 
 /**
- * Imports a custom level over an existing level through its levelID, using
+ * Imports a custom level over an existing level through its level ID, using
  * any sa2blvl and PAK file found in the mod folder.
  */
 void LevelImporter::importLevel(int levelID) {
@@ -96,8 +98,6 @@ void LevelImporter::importLevel(int levelID) {
 		return;
 	}
 	// Try to find pak & sa2blvl files to use in the mod folder.
-	const std::string gdPCPath = std::string(path) + "\\gd_PC\\";
-	const std::string PRSPath = gdPCPath + "PRS\\";
 	std::string levelFileName = "", texturePakName = "";
 	for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
 		const auto filePath = file.path();
@@ -155,8 +155,8 @@ void LevelImporter::importLevel(std::string landTableName,
 	HMODULE v0 = **datadllhandle;
 	LandTable* Land = (LandTable*)GetProcAddress(v0, landTableName.c_str());
 	try {
-		*Land = *(new LandTableInfo(std::string(path) + "\\gd_PC\\" +
-			levelFileName + ".sa2blvl"))->getlandtable();
+		*Land = *(new LandTableInfo(gdPCPath + levelFileName +
+			".sa2blvl"))->getlandtable();
 	}
 	catch (const std::exception& e) {
 		printDebug("(ERROR) Land Table not found.");
@@ -256,9 +256,7 @@ std::string LevelImporter::getLandTableName(int levelID) {
  * any fixes occur, the game will unforunately need a restart.
  */ 
 void LevelImporter::fixFileStructure() {
-	const std::string gdPCPath = std::string(path) + "\\gd_PC\\";
-	const std::string PRSPath = gdPCPath + "PRS\\";
-	for (const auto& file : std::filesystem::directory_iterator(path)) {
+	for (const auto& file : std::filesystem::directory_iterator(modFolderPath)) {
 		const auto filePath = file.path();
 		if (filePath.extension().string() == ".sa2blvl") {
 			printDebug("(ERROR) The level file has been detected to be in the "
@@ -381,7 +379,7 @@ void LevelImporter::checkForUpdate() {
 	// Save a notification file if an update is detected.
 	if (VERSION < std::stof(result)) {
 		printDebug("Update detected! Creating update reminder.");
-		std::string updatePath = std::string(path) + "\\MANUALLY UPDATE TO "
+		std::string updatePath = modFolderPath + "\\MANUALLY UPDATE TO "
 			"VERSION " + std::to_string(std::stof(result)) + ".txt";
 		if (!std::filesystem::exists(updatePath)) {
 			std::ofstream updateFile;
@@ -399,7 +397,7 @@ void LevelImporter::checkForUpdate() {
 	else {
 		printDebug("Mod up to date.");
 		bool cleaned = false;
-		for (const auto& file : std::filesystem::directory_iterator(path)) {
+		for (const auto& file : std::filesystem::directory_iterator(modFolderPath)) {
 			std::string filePath = file.path().string();
 			if (filePath.find("UPDATE") != std::string::npos) {
 				std::filesystem::remove(filePath);

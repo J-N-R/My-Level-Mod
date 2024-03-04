@@ -20,7 +20,9 @@ class LevelImporter {
 		float version;
 		std::vector<std::vector<NJS_TEXNAME>> customTexnames;
 		std::vector<NJS_TEXLIST> customTexlists;
-		const char* path;
+		std::string modFolderPath;
+		std::string gdPCPath;
+		std::string PRSPath;
 		IniReader* iniReader;
 		const HelperFunctions& helperFunctions;
 		void checkForUpdate();

@@ -24,12 +24,12 @@
 ObjectFunc(LoopController, 0x497B50);
 ObjectFunc(RailController, 0x4980C0);
 
-IniReader::IniReader(const char* path,
+IniReader::IniReader(const char* modFolderPath,
 		const HelperFunctions& helperFunctions)
 			: helperFunctions(helperFunctions) {
-	this->optionsPath = _strdup((std::string(path) +
+	this->optionsPath = _strdup((std::string(modFolderPath) +
 			"\\level_options.ini").c_str());
-	this->gdPCPath = _strdup((std::string(path) + "\\gd_PC").c_str());
+	this->gdPCPath = _strdup((std::string(modFolderPath) + "\\gd_PC").c_str());
 	this->levelID = -1;
 	this->simpleDeathPlane = 0;
 	this->hasSimpleDeathPlane = false;

@@ -220,6 +220,9 @@ LoopHead** IniReader::readSplines() {
  * Returns nullptr if something goes wrong.
  *
  * @param [filePath] - The full file path to your ini file.
+ * 
+ * TODO(J-N-R): Ask MainMemory if I can reuse their ProcessPathList function at
+ * https://github.com/X-Hax/sa2-mod-loader/blob/master/SA2ModLoader/EXEData.cpp
  */
 LoopHead* IniReader::readSpline(std::string filePath) {
 	std::ifstream splineFile;

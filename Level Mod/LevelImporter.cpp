@@ -145,7 +145,7 @@ void LevelImporter::importLevel(std::string landTableName,
 	// Remove file extension from levelFileName and texturePakName.
 	size_t lastDot = levelFileName.find_last_of(".");
 	if (lastDot != std::string::npos) {
-		levelFileName = levelFileName.substr(0, lastDot);
+		levelFileName = levelFileName.substr(0, lastDot).append(".sa2blvl");
 	}
 	lastDot = texturePakName.find_last_of(".");
 	if (lastDot != std::string::npos) {
@@ -156,8 +156,7 @@ void LevelImporter::importLevel(std::string landTableName,
 	HMODULE v0 = **datadllhandle;
 	LandTable* Land = (LandTable*)GetProcAddress(v0, landTableName.c_str());
 	try {
-		*Land = *(new LandTableInfo(gdPCPath + levelFileName +
-			".sa2blvl"))->getlandtable();
+		*Land = *(new LandTableInfo(gdPCPath + levelFileName))->getlandtable();
 	}
 	catch (const std::exception& e) {
 		printDebug("(ERROR) Land Table not found.");
@@ -166,8 +165,9 @@ void LevelImporter::importLevel(std::string landTableName,
 		printDebug(e.what());
 	}
 
-	printDebug("Attempting to import level: " + levelFileName + " with texture "
-		"pack: " + texturePakName + " over land table: " + landTableName + ".");
+	printDebug("Attempting to import level: " + levelFileName + " with "
+		"texture pack: " + texturePakName + ".pak over land table: " +
+		landTableName + ".");
 	
 	// Set land table to use custom textures. A global vector is used so multiple
 	// texture PAKs can be used and persist outside of this function.

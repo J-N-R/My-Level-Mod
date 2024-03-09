@@ -1,5 +1,5 @@
 /*
- * IniReader.cpp v4.2
+ * IniReader.cpp
  *
  * Description:
  *   A c++ class dedicated to parsing ini files for My Level Mod. This class

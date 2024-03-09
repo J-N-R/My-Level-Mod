@@ -1,5 +1,5 @@
-/*
- * LevelImporter.cpp Version 4.2
+/**
+ * LevelImporter.cpp
  *
  * Description:
  *    A c++ class dedicated to making importing levels into Sonic Adventure 2
@@ -27,10 +27,10 @@
 #include <filesystem>
 #include <curl/curl.h>
 #include <vector>
-#define VERSION 4.2f
-// By default, LevelImporter supports up to 1000 custom textures.
-// Change the number in here if you need more.
-#define NUMBER_OF_TEXTURES 1000
+#define VERSION 4.3f
+// By default, LevelImporter supports up to 256 custom textures.
+// Change the number in here if you need more, the game has a max of 500.
+#define NUMBER_OF_TEXTURES 500
 // Whether My Level Mod should automatically attempt to fix mod file structure
 // issues. If issues are fixed, My Level Mod will require a restart.
 #define FIX_FILE_STRUCTURE true
@@ -145,8 +145,9 @@ void LevelImporter::importLevel(std::string landTableName,
 	// Remove file extension from levelFileName and texturePakName.
 	size_t lastDot = levelFileName.find_last_of(".");
 	if (lastDot != std::string::npos) {
-		levelFileName = levelFileName.substr(0, lastDot).append(".sa2blvl");
+		levelFileName = levelFileName.substr(0, lastDot);
 	}
+	levelFileName = levelFileName.append(".sa2blvl");
 	lastDot = texturePakName.find_last_of(".");
 	if (lastDot != std::string::npos) {
 		texturePakName = texturePakName.substr(0, lastDot);

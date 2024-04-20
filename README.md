@@ -30,20 +30,14 @@ Feel free to contribute or message me for any information! J-N-R
    * Spawn location
    * Victory pose location
    * Death plane (have Sonic die under a certain y-level)
-   * Specific level ID you would like to replace
-   
-* Comes with 2 public c++ libraries for those who do know how to code:
-   * LevelImporter.cpp - A tool that lets you easily import and modify levels. (Requires IniReader)
-   * IniReader.cpp - A tool that can read options from an ini file, and can load spline/rail data from files.
-   
-* Completely open source, and very easy to add your own custom code (See MyLevelMod.cpp).
+
+* Completely open source, allowing developers to easily add custom code (See MyLevelMod.cpp).
+* For even more control, My Level Mod provides 2 c++ libraries to import levels:
+   * LevelImporter.cpp - A tool dedicated to importing and modifying levels.
+   * IniReader.cpp - A tool that can read level options and spline/rail data from ini files.
    
 ## Future goals
 - Add SET file functionality for easy goal ring placement.
-- ~~Add Spline functionality for loops / rails.~~
-- ~~Convert existing code to library.~~
-- ~~Add Chao garden support.~~
-- ~~Add support for multiple levels.~~
 - Add support for SA1
 
 ## NOTE

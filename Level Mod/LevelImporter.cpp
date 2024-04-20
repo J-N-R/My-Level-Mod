@@ -177,7 +177,10 @@ void LevelImporter::registerStartPositions(LevelOptions* levelOptions, std::stri
 	registerPosition(levelOptions->endPosition, levelID, false);
 }
 
-void LevelImporter::registerPosition(NJS_VECTOR* position, LevelIDs levelID, bool isStart) {
+void LevelImporter::registerPosition(
+		NJS_VECTOR* position,
+		LevelIDs levelID,
+		bool isStart) {
 	StartPosition startPosition = {
 		levelID,
 		0, // Single player rotation
@@ -207,7 +210,8 @@ void LevelImporter::resetActiveLevel() {
 void LevelImporter::free() {
 	for (Level* level : levels) {
 		LandTableInfo* landTableInfo = level->landTableInfo;
-		if (landTableInfo != nullptr && landTableInfo->getlandtable() != nullptr) {
+		if (landTableInfo != nullptr &&
+				landTableInfo->getlandtable() != nullptr) {
 			delete landTableInfo->getlandtable()->TextureList;
 			delete landTableInfo->getlandtable();
 			delete landTableInfo;

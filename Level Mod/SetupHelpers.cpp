@@ -147,8 +147,9 @@ void checkForUpdate(const char* modFolderPath) {
 	// Save a notification file if an update is detected.
 	else if (VERSION < std::stof(result)) {
 		printDebug("Update detected! Creating update reminder.");
-		std::string updatePath = std::string(modFolderPath) + "\\Mod developers: "
-			"manually UPDATE to VERSION " + std::to_string(std::stof(result)) + ".txt";
+		std::string updatePath = std::string(modFolderPath) + "\\Mod "
+			"developers: manually UPDATE to VERSION " + 
+			std::to_string(std::stof(result)) + ".txt";
 		if (!std::filesystem::exists(updatePath)) {
 			std::ofstream updateFile;
 			updateFile.open(updatePath, std::ofstream::out);
@@ -220,8 +221,14 @@ void fixFileStructure(const char* modFolderPath, LevelIDs levelID) {
 	}
 	if (levelID != -1) {
 		auto isSetFile = [](auto filePath, std::string levelIDString, char type) -> bool {
-			std::string fileName = filePath.filename().string(); // C++ 11 forces deep copy
-			std::transform(fileName.begin(), fileName.end(), fileName.begin(), ::tolower);
+			// C++ 11 forces deep copy.
+			std::string fileName = filePath.filename().string();
+			std::transform(
+				fileName.begin(),
+				fileName.end(),
+				fileName.begin(),
+				::tolower
+			);
 			std::string typeSuffix{};
 			typeSuffix.push_back('_');
 			typeSuffix.push_back(type);
@@ -234,10 +241,12 @@ void fixFileStructure(const char* modFolderPath, LevelIDs levelID) {
 		auto createSetFile = [](std::string path, std::string levelIDString, char type) {
 			std::string warningMessage("(Warning) \"");
 			warningMessage += type;
-			printDebug(warningMessage + "\" type SET file is missing for level_id=" + levelIDString + ".");
+			printDebug(warningMessage + "\" type SET file is missing for "
+				"level_id=" + levelIDString + ".");
 			printDebug("(Warning) Creating missing SET file. This may cause a "
 				"game crash.");
-			std::string targetFileName = "set00" + levelIDString + '_' + type + ".bin";
+			std::string targetFileName = 
+				"set00" + levelIDString + '_' + type + ".bin";
 			std::filesystem::copy_file(
 				path + DEFAULT_SET_FILE,
 				path + targetFileName

@@ -238,7 +238,8 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 	if (!iniGroup->hasKey("Code")) {
 		printDebug("(Warning) The spline found at " + filePath + " is missing "
 			"the \"Code\" field. ");
-		printDebug("(Warning) Did you forget to add it? Throwing away spline.");
+		printDebug("(Warning) Did you forget to add it? Throwing away "
+			"spline.");
 		delete spline;
 		return nullptr;
 	}

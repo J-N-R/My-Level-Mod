@@ -167,6 +167,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="ImportStructs.cpp" />
     <ClCompile Include="IniReader.cpp" />
     <ClCompile Include="LevelImporter.cpp" />
     <ClCompile Include="MyLevelMod.cpp" />

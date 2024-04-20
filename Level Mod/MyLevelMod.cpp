@@ -15,22 +15,25 @@
 #include "LevelImporter.h"
 #include "SetupHelpers.h"
 
+SetupHelpers* myLevelMod;
+
 extern "C" {
 	// Runs a single time once the game starts up. Required for My Level Mod.
 	__declspec(dllexport) void Init(
 			const char* modFolderPath,
 			const HelperFunctions& helperFunctions) {
-		myLevelModInit(modFolderPath, helperFunctions);
+		myLevelMod = new SetupHelpers(modFolderPath, helperFunctions);
+		myLevelMod->init();
 	}
 	
 	// Runs for every frame while the game is on. Required for My Level Mod.
     __declspec(dllexport) void __cdecl OnFrame() {
-		myLevelModOnFrame();
+		myLevelMod->onFrame();
 	}
 
 	// Runs when the game closes. Required for My Level Mod.
 	__declspec(dllexport) void __cdecl OnExit() {
-		myLevelModExit();
+		myLevelMod->free();
 	}
 
 	__declspec(dllexport) ModInfo SA2ModInfo = { ModLoaderVer };
@@ -43,7 +46,7 @@ void onLevelLoad();
 FunctionHook<void> loadLevelHook(InitCurrentLevelAndScreenCount, onLevelLoad);
 void onLevelLoad() {
 	loadLevelHook.Original();
-	myLevelModLevelHook();
+	myLevelMod->onLevelLoad();
 }
 
 

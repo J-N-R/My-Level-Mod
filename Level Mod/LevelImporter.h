@@ -123,7 +123,7 @@ class LevelImporter {
 		  Enables features that require running when a level loads. Currently
 		  used to enable loading splines for levels imported by level id.
 		*/
-		void onLevelHook();
+		void onLevelLoad();
 		/* Frees the memory allocated by LevelImporter. */
 		void free();
 		Level* activeLevel;

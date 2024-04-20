@@ -26,19 +26,17 @@
 #define FIX_FILE_STRUCTURE true
 #define DEFAULT_SET_FILE "default_set_file.bin"
 
-std::vector<ImportRequest*> requests;
-IniReader* iniReader;
-LevelImporter* levelImporter;
-const HelperFunctions* helperFunctions;
-
-void myLevelModInit(
+SetupHelpers::SetupHelpers(
 		const char* modFolderPath,
-		const HelperFunctions& _helperFunctions) {
-	iniReader = new IniReader(modFolderPath);
-	levelImporter = new LevelImporter(modFolderPath, _helperFunctions);
-	helperFunctions = &_helperFunctions;
+		const HelperFunctions& helperFunctions) {
+	this->modFolderPath = modFolderPath;
+	this->iniReader = new IniReader(modFolderPath);
+	this->levelImporter = new LevelImporter(modFolderPath, helperFunctions);
+}
+
+void SetupHelpers::init() {
 	if (CHECK_FOR_UPDATE) {
-		checkForUpdate(modFolderPath);
+		checkForUpdate();
 	}
 	requests = iniReader->readLevelOptions();
 	printDebug("");
@@ -68,20 +66,19 @@ void myLevelModInit(
 	if (FIX_FILE_STRUCTURE) {
 		for (Level* level : levelImporter->levels) {
 			fixFileStructure(
-				modFolderPath,
 				levelImporter->getLevelID(level->landTableName)
 			);
 		}
 	}
 }
 
-void myLevelModOnFrame() {
+void SetupHelpers::onFrame() {
 	if (levelImporter != nullptr) {
 		levelImporter->onFrame();
 	}
 }
 
-void myLevelModLevelHook() {
+void SetupHelpers::onLevelLoad() {
 	if (levelImporter != nullptr
 			&& iniReader != nullptr
 			&& requests.size() > 0) {
@@ -100,11 +97,11 @@ void myLevelModLevelHook() {
 				request->levelOptions->splines = iniReader->readSplines(request->splineFileNames);
 			}
 		}
-		levelImporter->onLevelHook();
+		levelImporter->onLevelLoad();
 	}
 }
 
-void myLevelModExit() {
+void SetupHelpers::free() {
 	levelImporter->free();
 	delete levelImporter;
 	delete iniReader;
@@ -119,7 +116,7 @@ void myLevelModExit() {
 	}
 }
 
-void checkForUpdate(const char* modFolderPath) {
+void SetupHelpers::checkForUpdate() {
 	printDebug("Checking for updates...");
 	curl_global_init(CURL_GLOBAL_ALL);
 	std::string result{ };
@@ -181,7 +178,7 @@ void checkForUpdate(const char* modFolderPath) {
 	curl_global_cleanup();
 }
 
-void fixFileStructure(const char* modFolderPath, LevelIDs levelID) {
+void SetupHelpers::fixFileStructure(LevelIDs levelID) {
 	std::string gdPCPath = std::string(modFolderPath).append("\\gd_PC\\");
 	std::string PRSPath = std::string(gdPCPath).append("PRS\\");
 	for (const auto& file : std::filesystem::directory_iterator(modFolderPath)) {
@@ -287,20 +284,6 @@ void fixFileStructure(const char* modFolderPath, LevelIDs levelID) {
 			createSetFile(gdPCPath, levelIDString, 'u');
 		}
 	}
-}
-
-std::string removeFileExtension(std::string fileName) {
-	std::string fileNameCopy = fileName; // C++ 11 forces deep copy.
-	size_t lastDot = fileNameCopy.find_last_of(".");
-	if (lastDot != std::string::npos) {
-		fileNameCopy = fileNameCopy.substr(0, lastDot);
-	}
-	return fileNameCopy;
-}
-
-/** Helper function to print debug messages. */
-void printDebug(std::string message) {
-	PrintDebug(("[My Level Mod] " + message).c_str());
 }
 
 int writer(char* data, size_t size,

@@ -4,40 +4,43 @@
 #include "IniReader.h"
 #include "LevelImporter.h"
 
-/*
-  Checks the internet for an update to My Level Mod and saves a
-  notification file in the mod folder if an update is detected.
-*/
-void checkForUpdate(const char* modFolderPath);
+class SetupHelpers {
+public:
+	SetupHelpers(const char* path, const HelperFunctions& helperFunctions);
 
-/*
-  Checks for and fixes incorrect file placements in the mod folder. If any
-  fixes occur, a restart will be required.
-*/
-void fixFileStructure(const char* modFolderPath, LevelIDs levelID);
+	/*
+	  Checks the internet for an update to My Level Mod and saves a 
+      notification file in the mod folder if an update is detected.
+    */
+	void checkForUpdate();
 
-/* 
-  Sets up My Level Mod by reading from level_options.ini and setting up level
-  imports.
-*/
-void myLevelModInit(const char* modFolderPath, const HelperFunctions& helperFunctions);
+	/*
+	  Checks for and fixes incorrect file placements in the mod folder. If any
+	  fixes occur, a restart will be required.
+	*/
+	void fixFileStructure(LevelIDs levelID);
 
-/* Frees up memory used by My Level Mod. */
-void myLevelModExit();
+	/*
+      Sets up My Level Mod by reading from level_options.ini and setting up level
+	  imports.
+	*/
+	void init();
 
-/* Runs LevelImporter's onFrame function. */
-void myLevelModOnFrame();
+	/* Frees up memory used by My Level Mod. */
+	void free();
 
-/* Runs every time a level is loaded. Used to load splines. */
-void myLevelModLevelHook();
+	/* Runs LevelImporter's onFrame function. */
+	void onFrame();
 
-std::string removeFileExtension(std::string fileName);
+	/* Runs every time a level is loaded. Used to load splines. */
+	void onLevelLoad();
 
-/* 
-  Saves debug information in your mod loader's debug file. Enable "FILE" in the
-  mod loader's debug menu to see messages.
-*/
-void printDebug(std::string message);
+private:
+	std::vector<ImportRequest*> requests;
+	IniReader* iniReader;
+	LevelImporter* levelImporter;
+	const char* modFolderPath;
+};
 
 /** Helper function for checkForUpdate(). */
 int writer(char* data, size_t size, size_t nmemb, std::string* buffer);

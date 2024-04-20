@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <vector>
 #define DISABLED_PLANE -1.666f
 
 /* Optional features for levels. */
@@ -41,3 +42,14 @@ struct ImportRequest {
 	// The My Level Mod features to enable for this level.
 	LevelOptions* levelOptions = nullptr;
 };
+
+/*** Shared Functions ***/
+
+/* Returns a copy of the given string without a file extension. */
+std::string removeFileExtension(std::string fileName);
+
+/*
+  Saves debug information in your mod loader's debug file. Enable "FILE" in the
+  mod loader's debug menu to see messages.
+*/
+void printDebug(std::string message);

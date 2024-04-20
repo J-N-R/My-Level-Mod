@@ -30,7 +30,8 @@
 // Change the number in here if you need more, the game has a max of 500.
 #define NUMBER_OF_TEXTURES 256
 
-LevelImporter::LevelImporter(const char* modFolderPath,
+LevelImporter::LevelImporter(
+		const char* modFolderPath,
 		const HelperFunctions& helperFunctions)
 			: helperFunctions(helperFunctions) {
 	this->modFolderPath = std::string(modFolderPath);
@@ -134,7 +135,7 @@ void LevelImporter::onFrame() {
 	}
 }
 
-void LevelImporter::onLevelHook() {
+void LevelImporter::onLevelLoad() {
 	resetActiveLevel();
 	if (activeLevel == nullptr) {
 		return;
@@ -182,7 +183,7 @@ void LevelImporter::registerPosition(
 		LevelIDs levelID,
 		bool isStart) {
 	StartPosition startPosition = {
-		levelID,
+		(short)levelID,
 		0, // Single player rotation
 		0, // Multiplayer, P1 rotation
 		0, // Multiplayer, P2 rotation

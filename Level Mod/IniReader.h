@@ -5,18 +5,16 @@
 
 class IniReader {
 	public:
-		int levelID;
-		bool hasSimpleDeathPlane;
-		float simpleDeathPlane;
-		std::vector<std::vector<std::string>> importLevelQueries;
-		IniReader(const char* path, const HelperFunctions& helperFunctions);
-		void readLevelOptions();
-		LoopHead** readSplines();
+		IniReader(const char* path);
+		std::vector<ImportRequest*> readLevelOptions();
+		LoopHead** readSplines(std::vector<std::string> splineFileNames);
 		LoopHead* readSpline(std::string filePath);
 
 	private:
 		const char* optionsPath;
 		const char* gdPCPath;
-		const HelperFunctions& helperFunctions;
-		void printDebug(std::string message);
+		// Parses a comma seperated string for a position variable.
+		NJS_VECTOR* getPosition(std::string position);
+		// Parses a comma seperated string and returns the tokens.
+		std::vector<std::string> getTokens(std::string value);
 };

@@ -1,0 +1,323 @@
+/**
+ * SetupHelpers.cpp
+ *
+ * Description:
+ *    A file dedicated to setting up My Level Mod.
+ *
+ *    X-Hax discord for code questions: https://discord.gg/gqJCF47
+ */
+
+#include "pch.h"
+#include "IniReader.h"
+#include "LevelImporter.h"
+#include "SetupHelpers.h"
+#include <curl/curl.h>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
+// Current version of My Level Mod.
+#define VERSION 4.4f
+#define UPDATE_URL "https://raw.githubusercontent.com/J-N-R/My-Level-Mod/master/VERSION.txt"
+ // Whether My Level Mod should check the internet for updates to My Level Mod.
+#define CHECK_FOR_UPDATE true
+// Whether My Level Mod should attempt to detect and fix file structure issues.
+#define FIX_FILE_STRUCTURE true
+#define DEFAULT_SET_FILE "default_set_file.bin"
+
+std::vector<ImportRequest*> requests;
+IniReader* iniReader;
+LevelImporter* levelImporter;
+const HelperFunctions* helperFunctions;
+
+void myLevelModInit(
+		const char* modFolderPath,
+		const HelperFunctions& _helperFunctions) {
+	iniReader = new IniReader(modFolderPath);
+	levelImporter = new LevelImporter(modFolderPath, _helperFunctions);
+	helperFunctions = &_helperFunctions;
+	if (CHECK_FOR_UPDATE) {
+		checkForUpdate(modFolderPath);
+	}
+	requests = iniReader->readLevelOptions();
+	printDebug("");
+	for (ImportRequest* request : requests) {
+		std::string landTableName = request->landTableName;
+		if (request->levelID != -1) {
+			landTableName = levelImporter->getLandTableName(request->levelID);
+		}
+		if (landTableName.empty()) {
+			printDebug("Found a level import without a level_id or "
+				"land_table_name set. Discarding import, please check your "
+				"level_options.ini file if this is a mistake.");
+			continue;
+		}
+		if (!request->levelFileName.empty() && !request->pakFileName.empty()) {
+			levelImporter->importLevel(
+				landTableName,
+				request->levelFileName,
+				request->pakFileName,
+				request->levelOptions
+			);
+		}
+		else {
+			levelImporter->importLevel(landTableName, request->levelOptions);
+		}
+	}
+	if (FIX_FILE_STRUCTURE) {
+		for (Level* level : levelImporter->levels) {
+			fixFileStructure(
+				modFolderPath,
+				levelImporter->getLevelID(level->landTableName)
+			);
+		}
+	}
+}
+
+void myLevelModOnFrame() {
+	if (levelImporter != nullptr) {
+		levelImporter->onFrame();
+	}
+}
+
+void myLevelModLevelHook() {
+	if (levelImporter != nullptr
+			&& iniReader != nullptr
+			&& requests.size() > 0) {
+		// Recompute activeLevel since it has not been initialized yet.
+		levelImporter->resetActiveLevel();
+		if (levelImporter->activeLevel == nullptr) {
+			return;
+		}
+		std::string activeTableName = levelImporter->activeLevel->landTableName;
+		for (ImportRequest* request : requests) {
+			std::string requestTableName = request->landTableName;
+			if (request->levelID != -1) {
+				requestTableName = levelImporter->getLandTableName(request->levelID);
+			}
+			if (!request->splineFileNames.empty() && requestTableName.compare(activeTableName) == 0) {
+				request->levelOptions->splines = iniReader->readSplines(request->splineFileNames);
+			}
+		}
+		levelImporter->onLevelHook();
+	}
+}
+
+void myLevelModExit() {
+	levelImporter->free();
+	delete levelImporter;
+	delete iniReader;
+	for (ImportRequest* request : requests) {
+		if (request->levelOptions != nullptr) {
+			delete request->levelOptions->startPosition;
+			delete request->levelOptions->endPosition;
+			delete request->levelOptions->splines;
+		}
+		delete request->levelOptions;
+		delete request;
+	}
+}
+
+void checkForUpdate(const char* modFolderPath) {
+	printDebug("Checking for updates...");
+	curl_global_init(CURL_GLOBAL_ALL);
+	std::string result{ };
+	CURL* curl = curl_easy_init();
+	if (!curl) {
+		printDebug("(Warning) Could not check for update. "
+			"[Curl will not instantiate]");
+		return;
+	}
+	// Disable cached HTML requests.
+	struct curl_slist* headers = NULL;
+	headers = curl_slist_append(headers, "Cache-control: no-cache");
+
+	// Read version number from github, store result as string.
+	curl_easy_setopt(curl, CURLOPT_URL, UPDATE_URL);
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writer);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &result);
+	CURLcode curlResult = curl_easy_perform(curl);
+	if (curlResult != CURLE_OK) {
+		printDebug("(Warning) Could not check for update. [" +
+			std::string(curl_easy_strerror(curlResult)) + "]");
+	}
+
+	// Save a notification file if an update is detected.
+	else if (VERSION < std::stof(result)) {
+		printDebug("Update detected! Creating update reminder.");
+		std::string updatePath = std::string(modFolderPath) + "\\Mod developers: "
+			"manually UPDATE to VERSION " + std::to_string(std::stof(result)) + ".txt";
+		if (!std::filesystem::exists(updatePath)) {
+			std::ofstream updateFile;
+			updateFile.open(updatePath, std::ofstream::out);
+			updateFile << "An update has been detected for My Level Mod!" <<
+				std::endl;
+			updateFile << "Please download and update your mod manually. "
+				"Download link:" << std::endl;
+			updateFile << "https://github.com/J-N-R/My-Level-Mod/"
+				"releases" << std::endl;
+			updateFile.close();
+		}
+	}
+	// Delete existing notification files if My Level Mod is up to date.
+	else {
+		printDebug("Mod up to date.");
+		bool cleaned = false;
+		for (const auto& file : std::filesystem::directory_iterator(modFolderPath)) {
+			std::string filePath = file.path().string();
+			if (filePath.find("UPDATE") != std::string::npos) {
+				std::filesystem::remove(filePath);
+				cleaned = true;
+			}
+		}
+		if (cleaned) {
+			printDebug("Cleaned up update reminders.");
+		}
+	}
+	curl_easy_cleanup(curl);
+	curl_global_cleanup();
+}
+
+void fixFileStructure(const char* modFolderPath, LevelIDs levelID) {
+	std::string gdPCPath = std::string(modFolderPath).append("\\gd_PC\\");
+	std::string PRSPath = std::string(gdPCPath).append("PRS\\");
+	for (const auto& file : std::filesystem::directory_iterator(modFolderPath)) {
+		const auto filePath = file.path();
+		if (filePath.extension().string() == ".sa2blvl") {
+			printDebug("(ERROR) The level file has been detected to be in the "
+				"wrong folder.");
+			if (std::rename(filePath.string().c_str(),
+				(gdPCPath + filePath.filename().string()).c_str()) == 0) {
+				printDebug("Successfully moved the level file to the folder "
+					"~yourModFolder\\gd_PC\\.");
+				printDebug("Expect a game crash, please run the game again.");
+			}
+			else {
+				printDebug("(Warning) Error moving the level file to the "
+					"right folder.");
+				printDebug("(Warning) The level file should be saved to"
+					"(~yourModFolder\\gd_PC\\(your-level).sa2blvl).");
+			}
+		}
+		else if (filePath.extension().string() == ".pak") {
+			printDebug("(ERROR) The texture pack file has been detected to be "
+				"in the wrong folder.");
+			if (std::rename(filePath.string().c_str(),
+				(PRSPath + filePath.filename().string()).c_str()) == 0) {
+				printDebug("Successfully moved the texture pack file to the "
+					"folder ~yourModFolder\\gd_PC\\.");
+				printDebug("Expect a game crash, please run the game again.");
+			}
+			else {
+				printDebug("(Warning) Error moving the texture pack file to "
+					"the right folder.");
+				printDebug("(Warning) The texture pack file should be saved "
+					"to (~yourModFolder\\gd_PC\\PRS\\(your-texture-pak).pak).");
+			}
+		}
+	}
+	if (levelID != -1) {
+		auto isSetFile = [](auto filePath, std::string levelIDString, char type) -> bool {
+			std::string fileName = filePath.filename().string(); // C++ 11 forces deep copy
+			std::transform(fileName.begin(), fileName.end(), fileName.begin(), ::tolower);
+			std::string typeSuffix{};
+			typeSuffix.push_back('_');
+			typeSuffix.push_back(type);
+			return
+				filePath.extension().string() == ".bin" &&
+				fileName.find(levelIDString) != std::string::npos &&
+				fileName.find(typeSuffix) != std::string::npos;
+		};
+
+		auto createSetFile = [](std::string path, std::string levelIDString, char type) {
+			std::string warningMessage("(Warning) \"");
+			warningMessage += type;
+			printDebug(warningMessage + "\" type SET file is missing for level_id=" + levelIDString + ".");
+			printDebug("(Warning) Creating missing SET file. This may cause a "
+				"game crash.");
+			std::string targetFileName = "set00" + levelIDString + '_' + type + ".bin";
+			std::filesystem::copy_file(
+				path + DEFAULT_SET_FILE,
+				path + targetFileName
+			);
+		};
+
+		bool sSetFileExists = false, uSetFileExists = false;
+		std::string levelIDString = std::to_string(levelID);
+		for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
+			const auto filePath = file.path();
+			if (isSetFile(filePath, levelIDString, 's')) {
+				sSetFileExists = true;
+			}
+			if (isSetFile(filePath, levelIDString, 'u')) {
+				uSetFileExists = true;
+			}
+			if (filePath.extension().string() == ".pak") {
+				printDebug("(ERROR) The texture pack file has been detected to be "
+					"in the wrong folder.");
+				if (std::rename(filePath.string().c_str(),
+					(PRSPath + filePath.filename().string()).c_str()) == 0) {
+					printDebug("Successfully moved the texture pack file to the "
+						"folder ~yourModFolder\\gd_PC\\.");
+					printDebug("Expect a game crash, please run the game again.");
+				}
+				else {
+					printDebug("(Warning) Error moving the texture pack file to "
+						"the right folder.");
+					printDebug("(Warning) The texture pack file should be saved "
+						"to (~yourModFolder\\gd_PC\\PRS\\(your-texture-pak).pak).");
+				}
+			}
+		}
+		if (!sSetFileExists) {
+			createSetFile(gdPCPath, levelIDString, 's');
+		}
+		if (!uSetFileExists) {
+			createSetFile(gdPCPath, levelIDString, 'u');
+		}
+	}
+}
+
+std::string removeFileExtension(std::string fileName) {
+	std::string fileNameCopy = fileName; // C++ 11 forces deep copy.
+	size_t lastDot = fileNameCopy.find_last_of(".");
+	if (lastDot != std::string::npos) {
+		fileNameCopy = fileNameCopy.substr(0, lastDot);
+	}
+	return fileNameCopy;
+}
+
+/** Helper function to print debug messages. */
+void printDebug(std::string message) {
+	PrintDebug(("[My Level Mod] " + message).c_str());
+}
+
+int writer(char* data, size_t size,
+	size_t nmemb, std::string* buffer) {
+	int result = 0;
+	if (buffer != NULL) {
+		buffer->append(data, size * nmemb);
+		result = size * nmemb;
+	}
+	return result;
+}
+
+
+
+/*************************************************************************
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *	https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *************************************************************************/

@@ -19,25 +19,16 @@
 
 #include "pch.h"
 #include "LevelImporter.h"
-#include "IniReader.h"
+#include "SetupHelpers.h"
 #include <fstream>
 #include <string>
 #include <sstream>
 #include <cstdio>
 #include <filesystem>
-#include <curl/curl.h>
 #include <vector>
-#define VERSION 4.3f
 // By default, LevelImporter supports up to 256 custom textures.
 // Change the number in here if you need more, the game has a max of 500.
-#define NUMBER_OF_TEXTURES 500
-// Whether My Level Mod should automatically attempt to fix mod file structure
-// issues. If issues are fixed, My Level Mod will require a restart.
-#define FIX_FILE_STRUCTURE true
-// Whether My Level Mod should automatically check the internet for new updates.
-// Used to save an update notification to the mod folder.
-#define CHECK_FOR_UPDATE true
-#define UPDATE_URL "https://raw.githubusercontent.com/J-N-R/My-Level-Mod/master/VERSION.txt"
+#define NUMBER_OF_TEXTURES 256
 
 LevelImporter::LevelImporter(const char* modFolderPath,
 		const HelperFunctions& helperFunctions)
@@ -45,417 +36,188 @@ LevelImporter::LevelImporter(const char* modFolderPath,
 	this->modFolderPath = std::string(modFolderPath);
 	this->gdPCPath = std::string(modFolderPath).append("\\gd_PC\\");
 	this->PRSPath = std::string(gdPCPath).append("PRS\\");
-	this->version = VERSION;
-	this->iniReader = new IniReader(modFolderPath, helperFunctions);
 }
 
-/**
- * Dynamically imports levels by parsing level_options.ini. Will automatically
- * check for updates to My Level Mod and fix potential file structure errors if
- * those features are enabled.
- */
-void LevelImporter::init() {
-	iniReader->readLevelOptions();
-	if (CHECK_FOR_UPDATE) {
-		checkForUpdate();
-	}
-	if (FIX_FILE_STRUCTURE) {
-		fixFileStructure();
-	}
-	
-	// If a level ID was provided in level_options.ini, perform a simple import.
-	if (iniReader->levelID != -1) {
-		importLevel(iniReader->levelID);
-	}
-
-	// If complex import queries were provided in level_options.ini, perform
-	// complex imports. Used when importing multiple levels with one mod.
-	for (std::vector<std::string> parameters : iniReader->importLevelQueries) {
-		switch (parameters.size()) {
-			case 1:
-				importLevel(parameters[0]);
-				break;
-			case 2:
-				importLevel(parameters[0], parameters[1]);
-				break;
-			case 3:
-				importLevel(parameters[0], parameters[1], parameters[2]);
-				break;
-			default:
-				printDebug("(Warning) Broken Import_Level query found in"
-					"level_options.ini. Disregarding.");
-		}
-	}
+LandTableInfo* LevelImporter::importLevel(std::string landTableName) {
+	return importLevel(landTableName, nullptr);
 }
 
-/**
- * Imports a custom level over an existing level through its level ID, using
- * any sa2blvl and PAK file found in the mod folder.
- */
-void LevelImporter::importLevel(int levelID) {
-	if (iniReader->levelID == -1) {
-		printDebug("(Warning) landTableName and levelID not found. "
-			"Cancelling level import.");
-		return;
-	}
-	// Try to find pak & sa2blvl files to use in the mod folder.
-	std::string levelFileName = "", texturePakName = "";
-	for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
-		const auto filePath = file.path();
-		if (filePath.extension().string() == ".sa2blvl") {
-			levelFileName = filePath.stem().string();
-		}
-	}
-	for (const auto& file : std::filesystem::directory_iterator(PRSPath)) {
-		const auto filePath = file.path();
-		if (filePath.extension().string() == ".pak") {
-			texturePakName = filePath.stem().string();
-		}
-	}
-	importLevel(getLandTableName(iniReader->levelID), levelFileName, texturePakName);
+LandTableInfo* LevelImporter::importLevel(std::string landTableName, LevelOptions* levelOptions) {
+	return importLevel(
+		landTableName,
+		detectFile(gdPCPath, "sa2blvl"),
+		detectFile(PRSPath, "pak"),
+		levelOptions
+	);
 }
 
-/**
- * Imports a custom level over an existing level, using the landTableName as
- * the levelFileName and texturePakName.
- */
-void LevelImporter::importLevel(std::string landTableName) {
-	importLevel(landTableName, landTableName, landTableName);
+LandTableInfo* LevelImporter::importLevel(std::string landTableName, std::string levelFileName, std::string pakFileName) {
+	return importLevel(landTableName, levelFileName, pakFileName, nullptr);
 }
 
-/**
- * Imports a custom level over an existing level, using the levelFileName as
- * the texturePakName.
- */
-void LevelImporter::importLevel(std::string landTableName, std::string levelFileName) {
-	importLevel(landTableName, levelFileName, levelFileName);
+LandTableInfo* LevelImporter::importLevel(std::string landTableName, std::string levelFileName, std::string pakFileName, LevelOptions* levelOptions) {
+	if (levelFileName.empty() || pakFileName.empty()) {
+		printDebug("Invalid level or pak file name. Skipping import.");
+		return nullptr;
+	}
+	printDebug("Attempting to import \"" + levelFileName + ".sa2blvl\" "
+		"with texture pack \"" + pakFileName + ".pak\" over land table \"" +
+		landTableName + ".\"");
+	LandTableInfo* landTableInfo = new LandTableInfo(
+		gdPCPath + removeFileExtension(levelFileName).append(".sa2blvl")
+	);
+	NJS_TEXNAME* customTextureNames = new NJS_TEXNAME[NUMBER_OF_TEXTURES]{};
+	levels.push_back(new Level{
+		landTableName,
+		landTableInfo,
+		customTextureNames,
+		{ customTextureNames, NUMBER_OF_TEXTURES },
+		levelOptions
+	});
+	LandTable* newLandTable = landTableInfo->getlandtable();
+	if (newLandTable == nullptr) {
+		printDebug("Error generating land table from the given files. "
+			"Skipping import.");
+		return nullptr;
+	}
+	LandTable* oldLandTable = (LandTable*)GetProcAddress(**datadllhandle, landTableName.c_str());
+	*oldLandTable = *newLandTable;
+	oldLandTable->TextureList = &levels.back()->textureList;
+	oldLandTable->TextureName = _strdup(removeFileExtension(pakFileName).c_str());
+	// Start positions must be registered before the level is loaded.
+	if (levelOptions != nullptr) {
+		registerStartPositions(levelOptions, landTableName);
+	}
+	printDebug("Level import was successful.");
+	return landTableInfo;
 }
 
-/** 
- * Imports a custom level over an existing level.
- * 
- * @param [landTableName] - The name of the land table you want to replace.
- * @param [levelFileName] - The name of the .sa2blvl file in your mod folder
- *    to use for the import.
- * @param [texturePakName] - The name of the .pak file in your mod folder to
- *    use for the import.
- */
-void LevelImporter::importLevel(std::string landTableName,
-		std::string levelFileName, std::string texturePakName) {
-	// Remove file extension from levelFileName and texturePakName.
-	size_t lastDot = levelFileName.find_last_of(".");
+LandTableInfo* LevelImporter::importLevel(LevelIDs levelID) {
+	return importLevel(levelID, nullptr);
+}
+
+LandTableInfo* LevelImporter::importLevel(LevelIDs levelID, LevelOptions* levelOptions) {
+	return importLevel(getLandTableName(levelID), levelOptions);
+}
+
+LandTableInfo* LevelImporter::importLevel(LevelIDs levelID, std::string levelFileName, std::string pakFileName) {
+	return importLevel(levelID, levelFileName, pakFileName, nullptr);
+}
+
+LandTableInfo* LevelImporter::importLevel(LevelIDs levelID, std::string levelFileName, std::string pakFileName, LevelOptions* levelOptions) {
+	return importLevel(getLandTableName(levelID), levelFileName, pakFileName, levelOptions);
+}
+
+std::string LevelImporter::getLandTableName(LevelIDs levelID) {
+	return "objLandTable00" + std::to_string(levelID);
+}
+
+LevelIDs LevelImporter::getLevelID(std::string landTableName) {
+	size_t lastDot = landTableName.find_last_of("00");
 	if (lastDot != std::string::npos) {
-		levelFileName = levelFileName.substr(0, lastDot);
+		return (LevelIDs)std::stoi(landTableName.substr(lastDot));
 	}
-	levelFileName = levelFileName.append(".sa2blvl");
-	lastDot = texturePakName.find_last_of(".");
-	if (lastDot != std::string::npos) {
-		texturePakName = texturePakName.substr(0, lastDot);
-	}
-
-	// Grab original land table and replace with custom land table.
-	HMODULE v0 = **datadllhandle;
-	LandTable* Land = (LandTable*)GetProcAddress(v0, landTableName.c_str());
-	try {
-		*Land = *(new LandTableInfo(gdPCPath + levelFileName))->getlandtable();
-	}
-	catch (const std::exception& e) {
-		printDebug("(ERROR) Land Table not found.");
-		printDebug("(ERROR) Please make sure you're creating the lvl file "
-			"properly.");
-		printDebug(e.what());
-	}
-
-	printDebug("Attempting to import level: " + levelFileName + " with "
-		"texture pack: " + texturePakName + ".pak over land table: " +
-		landTableName + ".");
-	
-	// Set land table to use custom textures. A global vector is used so multiple
-	// texture PAKs can be used and persist outside of this function.
-	NJS_TEXNAME customTextureNames[NUMBER_OF_TEXTURES]{};
-	customTexnames.push_back(
-		std::vector<NJS_TEXNAME>(std::begin(customTextureNames),
-			std::end(customTextureNames)));
-	customTexlists.push_back({customTexnames.back().data(), NUMBER_OF_TEXTURES});
-	Land->TextureList = &customTexlists.back();
-	Land->TextureName = _strdup(texturePakName.c_str());
-
-	// (Safety feature) disable blockbit system, entire level will be loaded
-	// at once.
-	WriteData<5>((void*)0x5DCE2D, 0x90);
-	printDebug("Import successful.");
+	return  (LevelIDs)-1;
 }
 
-/**
- * Since Chao gardens are not numbered in the game, this function attempts to
- * number the Chao gardens based on the pre-existing numbering pattern of
- * levels. The final numbered level is 59 (Death Chamber 2P) and assuming the
- * boss levels were numbered, the final boss is 66 (Biolizard). Therefore, Chao
- * gardens level ids start at 67 (objLandTableLobby000).
- *
- * @returns an empty string if a land table is not found.
- */
-std::string LevelImporter::getLandTableName(int levelID) {
-	if (levelID < 60) {
-		return "objLandTable00" + std::to_string(levelID);
-	}
-	switch (levelID) {
-		case 67:
-			return "objLandTableLobby000";
-		case 68:
-			return "objLandTableLobby00k";
-		case 69:
-			return "objLandTableLobby0dk";
-		case 70:
-			return "objLandTableLobbyh0k";
-		case 71:
-			return "objLandTableLobbyhdk";
-		case 72:
-			return "objLandTableLobby";
-		case 73:
-			return "objLandTableDark";
-		case 74:
-			return "objLandTableHero";
-		case 75:
-			return "objLandTableNeut";
-		case 76:
-			return "objLandTableStadium";
-		case 77:
-			return "objLandTableEntrance";
-		case 78:
-			return "objLandTableRace";
-		case 79:
-			return "objLandTableRaceDark";
-		case 80:
-			return "objLandTableRaceHero";
-		case 81:
-			return "objLandTableChaoKarate";
-		case 82:
-			return "objLandTableKinderBl";
-		case 83:
-			return "objLandTableKinderCl";
-		case 84:
-			return "objLandTableKinderCo";
-		case 85:
-			return "objLandTableKinderFo";
-		case 86:
-			return "objLandTableKinderHe";
-		case 87:
-			return "objLandTableKinderHo";
-		case 88:
-			return "objLandTableKinderPr";
-		case 89:
-			return "objLandTableKinderLi";
-		case 90:
-			return "objLandTableKinderPl";
-		default:
-			return "";
-	}
-}
-
-/**
- * Automatically detect and attempt to fix files being in the wrong folder. If
- * any fixes occur, the game will unforunately need a restart.
- */ 
-void LevelImporter::fixFileStructure() {
-	for (const auto& file : std::filesystem::directory_iterator(modFolderPath)) {
-		const auto filePath = file.path();
-		if (filePath.extension().string() == ".sa2blvl") {
-			printDebug("(ERROR) The level file has been detected to be in the "
-				"wrong folder.");
-			if (std::rename(filePath.string().c_str(),
-					(gdPCPath + filePath.filename().string()).c_str()) == 0) {
-				printDebug("Successfully moved the level file to the folder "
-					"~yourModFolder\\gd_PC\\.");
-				printDebug("Expect a game crash, please run the game again.");
-			}
-			else {
-				printDebug("(Warning) Error moving the level file to the "
-					"right folder.");
-				printDebug("(Warning) The level file should be saved to"
-					"(~yourModFolder\\gd_PC\\(your-level).sa2blvl).");
-			}
-		}
-		else if (filePath.extension().string() == ".pak") {
-			printDebug("(ERROR) The texture pack file has been detected to be "
-				"in the wrong folder.");
-			if (std::rename(filePath.string().c_str(),
-					(PRSPath + filePath.filename().string()).c_str()) == 0) {
-				printDebug("Successfully moved the texture pack file to the "
-					"folder ~yourModFolder\\gd_PC\\.");
-				printDebug("Expect a game crash, please run the game again.");
-			}
-			else {
-				printDebug("(Warning) Error moving the texture pack file to "
-					"the right folder.");
-				printDebug("(Warning) The texture pack file should be saved "
-					"to (~yourModFolder\\gd_PC\\PRS\\(your-texture-pak).pak).");
-			}
-		}
-	}
-	if (iniReader->levelID != -1) {
-		for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
-			const auto filePath = file.path();
-			std::string levelIDString = std::to_string(iniReader->levelID);
-			if (filePath.extension().string() == ".bin" &&
-					filePath.filename().string()
-						.find(levelIDString) == std::string::npos) {
-				std::stringstream ss(filePath.filename().string());
-				std::vector<std::string> tokens;
-				std::string token;
-				while (getline(ss, token, '_')) {
-					tokens.push_back(token);
-				}
-				std::string fileName = "set00" + levelIDString;
-				tokens.erase(tokens.begin());
-				for (std::string _token : tokens) {
-					fileName += "_" + _token;
-				}
-				printDebug("(ERROR) A SET file that doesn't match the level ID: "
-					+ levelIDString + " was found.");
-				if (std::rename(filePath.string().c_str(),
-						(gdPCPath + fileName).c_str()) == 0) {
-					printDebug("Successfully renamed " +
-						filePath.filename().string() + " to " + fileName + ".");
-					printDebug("Expect a game crash, please run game again.");
-				}
-				else {
-					printDebug("(ERROR) Error renaming the SET file to match "
-						"the level ID.");
-					printDebug("(ERROR) The SET file should be named " +
-						fileName + ".");
-				}
-			}
-			else if (filePath.extension().string() == ".pak") {
-				printDebug("(ERROR) The texture pack file has been detected to be "
-					"in the wrong folder.");
-				if (std::rename(filePath.string().c_str(),
-					(PRSPath + filePath.filename().string()).c_str()) == 0) {
-					printDebug("Successfully moved the texture pack file to the "
-						"folder ~yourModFolder\\gd_PC\\.");
-					printDebug("Expect a game crash, please run the game again.");
-				}
-				else {
-					printDebug("(Warning) Error moving the texture pack file to "
-						"the right folder.");
-					printDebug("(Warning) The texture pack file should be saved "
-						"to (~yourModFolder\\gd_PC\\PRS\\(your-texture-pak).pak).");
-				}
-			}
-		}
-	}
-}
-
-/**
- * Check the internet for an update to My Level Mod and save a notification
- * file in the mod folder if an update is detected.
- */
-void LevelImporter::checkForUpdate() {
-	printDebug("Checking for updates...");
-	curl_global_init(CURL_GLOBAL_ALL);
-	std::string result{ };
-	CURL* curl = curl_easy_init();
-	if (!curl) {
-		printDebug("(Warning) Could not check for update. "
-			"[Curl will not instantiate]");
-		return;
-	}
-	// Disable cached HTML requests.
-	struct curl_slist* headers = NULL;
-	headers = curl_slist_append(headers, "Cache-control: no-cache");
-
-	// Read version number from github, store result as string.
-	curl_easy_setopt(curl, CURLOPT_URL, UPDATE_URL);
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, this->writer);
-	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &result);
-	CURLcode curlResult = curl_easy_perform(curl);
-	if (curlResult != CURLE_OK) {
-		printDebug("(Warning) Could not check for update. [" +
-			std::string(curl_easy_strerror(curlResult)) + "]");
-	}
-
-	// Save a notification file if an update is detected.
-	else if (VERSION < std::stof(result)) {
-		printDebug("Update detected! Creating update reminder.");
-		std::string updatePath = modFolderPath + "\\MANUALLY UPDATE TO "
-			"VERSION " + std::to_string(std::stof(result)) + ".txt";
-		if (!std::filesystem::exists(updatePath)) {
-			std::ofstream updateFile;
-			updateFile.open(updatePath, std::ofstream::out);
-			updateFile << "An update has been detected for My Level Mod!" <<
-				std::endl;
-			updateFile << "Please download and update your mod manually. "
-				"Download link:" << std::endl;
-			updateFile << "https://github.com/J-N-R/My-Level-Mod/"
-				"releases" << std::endl;
-			updateFile.close();
-		}
-	}
-	// Delete existing notification files if My Level Mod is up to date.
-	else {
-		printDebug("Mod up to date.");
-		bool cleaned = false;
-		for (const auto& file : std::filesystem::directory_iterator(modFolderPath)) {
-			std::string filePath = file.path().string();
-			if (filePath.find("UPDATE") != std::string::npos) {
-				std::filesystem::remove(filePath);
-				cleaned = true;
-			}
-		}
-		if (cleaned) {
-			printDebug("Cleaned up update reminders.");
-		}
-	}
-	curl_easy_cleanup(curl);
-	curl_global_cleanup();
-}
-
-/**
- * Enables features that require constant frame checking to work. Currently
- * used to enable the simple death plane in levels imported by level id.
- */
 void LevelImporter::onFrame() {
-	if (iniReader->levelID != -1 && GameState == GameStates_Ingame &&
-			CurrentLevel == iniReader->levelID && 
-				iniReader->hasSimpleDeathPlane) {
+	if (activeLevel != nullptr && activeLevel->levelOptions != nullptr) {
+		float simpleDeathPlane = activeLevel->levelOptions->simpleDeathPlane;
+		// Enable simple death plane.
+		if (simpleDeathPlane == DISABLED_PLANE) {
+			return;
+		}
 		if (MainCharObj1 != nullptr && MainCharObj1[0] != nullptr
-				&& MainCharObj1[0]->Position.y <= iniReader->simpleDeathPlane) {
+			&& MainCharObj1[0]->Position.y <= simpleDeathPlane) {
 			GameState = GameStates_NormalRestart;
 		}
 	}
 }
 
-/**
- * Enables features that require running when a level loads. Currently used to
- * enable loading splines for levels imported by level id.
- */
 void LevelImporter::onLevelHook() {
-	if (iniReader->levelID != -1 && CurrentLevel == iniReader->levelID) {
-		printDebug("Level load detected. Loading splines.");
+	resetActiveLevel();
+	if (activeLevel == nullptr) {
+		return;
+	}
+	printDebug("Custom level load detected.");
+	LevelOptions* levelOptions = activeLevel->levelOptions;
+	if (levelOptions == nullptr) {
+		printDebug("No My Level Mod features enabled, skipping load logic.");
+		return;
+	}
+	LoopHead** splines = levelOptions->splines;
+	if (splines != nullptr) {
+		printDebug("Splines detected! Loading splines for level.");
+		LoadStagePaths(splines);
+		printDebug("Successfully loaded spline data.");
+	}
+}
 
-		LoopHead** splines = iniReader->readSplines();
-		if (splines) {
-			LoadStagePaths(splines);
+std::string LevelImporter::detectFile(std::string path, std::string fileExtension) {
+	for (const auto& file : std::filesystem::directory_iterator(path)) {
+		const auto fileName = file.path().filename();
+		if (fileName.extension().string() == "." + fileExtension) {
+			printDebug("Detected level file, using \"" + fileName.string() +
+				"\" for import.");
+			return fileName.stem().string();
+		}
+	}
+	return std::string();
+}
+
+void LevelImporter::registerStartPositions(LevelOptions* levelOptions, std::string landTableName) {
+	LevelIDs levelID = getLevelID(landTableName);
+	if (levelOptions->startPosition == nullptr) {
+		levelOptions->startPosition = new NJS_VECTOR{ 0, 0, 0 };
+	}
+	if (levelOptions->endPosition == nullptr) {
+		levelOptions->endPosition = new NJS_VECTOR{ 0, 0, 0 };
+	}
+	registerPosition(levelOptions->startPosition, levelID, true);
+	registerPosition(levelOptions->endPosition, levelID, false);
+}
+
+void LevelImporter::registerPosition(NJS_VECTOR* position, LevelIDs levelID, bool isStart) {
+	StartPosition startPosition = {
+		levelID,
+		0, // Single player rotation
+		0, // Multiplayer, P1 rotation
+		0, // Multiplayer, P2 rotation
+		*position, // Single player
+		*position, // Multiplayer, P1
+		*position  // Multiplayer, P2
+	};
+	if (isStart) {
+		helperFunctions.RegisterStartPosition(CurrentCharacter, startPosition);
+	}
+	else {
+		helperFunctions.RegisterEndPosition(CurrentCharacter, startPosition);
+	}
+}
+
+void LevelImporter::resetActiveLevel() {
+	activeLevel = nullptr;
+	for (Level* level : levels) {
+		if (CurrentLevel == getLevelID(level->landTableName)) {
+			activeLevel = level;
 		}
 	}
 }
 
-/** Helper function to print debug messages. */
-void LevelImporter::printDebug(std::string message) {
-	PrintDebug(("[My Level Mod] " + message).c_str());
+void LevelImporter::free() {
+	for (Level* level : levels) {
+		LandTableInfo* landTableInfo = level->landTableInfo;
+		if (landTableInfo != nullptr && landTableInfo->getlandtable() != nullptr) {
+			delete landTableInfo->getlandtable()->TextureList;
+			delete landTableInfo->getlandtable();
+			delete landTableInfo;
+		}
+		delete level->textureNames;
+		delete level;
+	}
 }
 
-/** Helper function for checkForUpdate(). */
-int LevelImporter::writer(char* data, size_t size,
-		size_t nmemb, std::string* buffer) {
-	int result = 0;
-	if (buffer != NULL) {
-		buffer->append(data, size * nmemb);
-		result = size * nmemb;
-	}
-	return result;
-}
+
 
 /*************************************************************************
  * Copyright 2022 Google LLC

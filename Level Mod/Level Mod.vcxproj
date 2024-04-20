@@ -112,7 +112,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)sa2-mod-loader\SA2ModLoader\include;$(SolutionDir)sa2-mod-loader\libmodutils;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)sa2-mod-loader\SA2ModLoader\include;$(SolutionDir)sa2-mod-loader\libmodutils;$(SolutionDir)sa2-mod-loader\mod-loader-common\ModLoaderCommon;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -159,9 +159,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="ImportStructs.h" />
     <ClInclude Include="IniReader.h" />
     <ClInclude Include="LevelImporter.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="SetupHelpers.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
@@ -174,10 +176,14 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="SetupHelpers.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\sa2-mod-loader\libmodutils\libmodutils.vcxproj">
       <Project>{83c0f6b3-2297-4a14-98d6-f9c3e99192ce}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\sa2-mod-loader\mod-loader-common\ModLoaderCommon\ModLoaderCommon.vcxproj">
+      <Project>{ec0293f5-4bcf-46b2-8133-18caea141c5b}</Project>
     </ProjectReference>
     <ProjectReference Include="..\sa2-mod-loader\SA2ModLoader\SA2ModLoader.vcxproj">
       <Project>{3bf5c1b2-e3a4-43e7-9c2a-e445810834de}</Project>

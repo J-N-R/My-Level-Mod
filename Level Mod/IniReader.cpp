@@ -2,7 +2,7 @@
  * IniReader.cpp
  *
  * Description:
- *   A c++ class dedicated to parsing ini files for My Level Mod. This class
+ *   A class dedicated to parsing ini files for My Level Mod. This class
  *   parses over two types of ini files:
  * 
  *   The level_options.ini file:
@@ -14,7 +14,9 @@
  */
 
 #include "pch.h"
+#include "IniFile.hpp"
 #include "IniReader.h"
+#include "SetupHelpers.h"
 #include <fstream>
 #include <string>
 #include <sstream>
@@ -24,15 +26,10 @@
 ObjectFunc(LoopController, 0x497B50);
 ObjectFunc(RailController, 0x4980C0);
 
-IniReader::IniReader(const char* modFolderPath,
-		const HelperFunctions& helperFunctions)
-			: helperFunctions(helperFunctions) {
+IniReader::IniReader(const char* modFolderPath) {
 	this->optionsPath = _strdup((std::string(modFolderPath) +
 			"\\level_options.ini").c_str());
 	this->gdPCPath = _strdup((std::string(modFolderPath) + "\\gd_PC").c_str());
-	this->levelID = -1;
-	this->simpleDeathPlane = 0;
-	this->hasSimpleDeathPlane = false;
 }
 
 /**
@@ -40,163 +37,155 @@ IniReader::IniReader(const char* modFolderPath,
  * and which level features should be enabled. It is important to note that
  * level features only work for levels imported by level id.
  */
-void IniReader::readLevelOptions() {
-	std::ifstream iniFile;
-	iniFile.open(optionsPath, std::ios::in);
-	if (!iniFile.is_open()) {
-		printDebug("(Warning) Error reading from options file. (is it"
-			"missing?)");
-		return;
-	}
-	printDebug("Reading from level_options.");
+std::vector<ImportRequest*> IniReader::readLevelOptions() {
+	printDebug("");
+	printDebug("Reading options from \"level_options.ini.\"");
+	IniFile* iniFile = new IniFile(optionsPath);
 
-	// Read through level_options.ini line by line, searching for lines with an
-	// equal sign. Then assume the left side of the equal sign is a variable,
-	// and the right side is a value. Stop searching once you've reached the
-	// explanations section of the level_options.ini file.
-	// TODO: Replace manual reads with X-hax's IniFile.cpp
-	std::string line;
-	while (line.find("Explanations:") == std::string::npos) {
-		std::getline(iniFile, line);
-		if (line.find('=') != std::string::npos) {
-			std::string key = line.substr(0, line.find('='));
-			std::string value = line.substr(line.find('=') + 1);
+	auto printTabbed = [](std::string message) {
+		printDebug("  " + message);
+	};
 
-			// Create a simple import level query using the given level ID.
-			if (key == "Level_Import_ID") {
-				try {
-					levelID = std::stoi(value);
-					printDebug("Level ID set to " + value + ".");
-				}
-				catch (const std::exception& e) {
-					printDebug("(Warning) Error reading level import ID.");
-					printDebug(e.what());
-				}
-			}
+	auto printWarning = [](std::string message) {
+		printDebug("    * (Warning) " + message);
+	};
 
-			// Spawn and Victory locations for the simple import level.
-			else if (levelID != -1 && key == "Spawn_Coordinates" ||
-				key == "Victory_Coordinates") {
-				boolean isStart = key == "Spawn_Coordinates" ? true : false;
-				const auto ignoreThis = std::remove(value.begin(), value.end(), ' ');
-				std::istringstream ss(value);
-
-				// Get x, y, and z coordinates.
-				float coords[3]{};
-				try {
-					std::string token;
-					for (int i = 0; i < 3; i++) {
-						std::getline(ss, token, ',');
-						coords[i] = std::stof(token);
-					}
-				}
-				// Print debug information in case of error.
-				catch (const std::exception& e) {
-					printDebug("(Warning) Error reading coordinates." 
-						"Defaulting to 0, 0, 0.");
-					printDebug(e.what());
-				}
-				NJS_VECTOR coordinates{ coords[0], coords[1], coords[2] };
-				StartPosition startPos = {
-							(short)levelID,
-							0,
-							0,
-							0,
-							coordinates,
-							coordinates,
-							coordinates
-				};
-				if (isStart) {
-					printDebug("Level Start coordinates set to: " + value);
-					helperFunctions.RegisterStartPosition(Characters_Sonic,
-						startPos);
-				}
-				else {
-					printDebug("Level End coordinates set to: " + value);
-					helperFunctions.RegisterEndPosition(Characters_Sonic,
-						startPos);
-				}
-			}
-
-			// A Simple Death Plane to kill sonic without death zones, for the
-			// simple import level.
-			else if (key == "Simple_Death_Plane") {
-				try {
-					simpleDeathPlane = std::stof(value);
-					hasSimpleDeathPlane = true;
-				}
-				// Catch will run if user inputted "OFF" or something else.
-				catch (const std::exception& e) {
-					const auto ignoreThis = e;
-				}
-				if (hasSimpleDeathPlane) {
-					printDebug("Simple Death Plane set to ON. Player will now die"
-						"under y=" + std::to_string(simpleDeathPlane) + ".");
-				}
-				else {
-					printDebug("Simple Death Plane set to OFF.");
-				}
-			}
-
-			// User inputable importLevel() queries that can import a level
-			// over a specific landtable, with specific files. Can be used
-			// multiple times  to import multiple levels. Does not support the
-			// other features, such as Spawn location or death plane.
-			else if (key == "Import_Level") {
-				const auto ignoreThis = std::remove(value.begin(), value.end(), ' ');
-				std::istringstream ss(value);
-				printDebug("Import Level query found!");
-				printDebug("Building query with these parameters: " + value);
-
-				// Build importLevel() query, store in local variable.
-				std::vector<std::string> parameters;
-				std::string token;
-				while (std::getline(ss, token, ',')) {
-					parameters.push_back(token);
-				}
-				if (parameters.size() != 0) {
-					importLevelQueries.push_back(
-						std::vector<std::string>(parameters.begin(),
-							parameters.end()));
-				}
+	bool hadFailedRequest = false;
+	std::vector<ImportRequest*> requests;
+	for (auto it = iniFile->begin(); it != iniFile->end(); it++) {
+		if (it->first.empty()) {
+			continue;
+		}
+		printDebug("");
+		printDebug("Custom level [" + it->first + "] found:");
+		IniGroup* iniGroup = it->second;
+		ImportRequest* request = new ImportRequest;
+		LevelOptions* levelOptions = new LevelOptions;
+		if (iniGroup->hasKey("level_id")) {
+			try {
+				printTabbed("level_id=" + iniGroup->getString("level_id"));
+				request->levelID = (LevelIDs)iniGroup->getInt("level_id", -1);
+			} catch (...) {
+				printWarning("Invalid level_id given: \"" +
+					iniGroup->getString("level_id") + "\"");
 			}
 		}
+		if (iniGroup->hasKey("land_table_name")) {
+			request->landTableName = iniGroup->getString("land_table_name");
+			printTabbed("land_table_name=" + request->landTableName);
+		}
+		if (iniGroup->hasKey("level_file_name")) {
+			request->levelFileName = iniGroup->getString("level_file_name");
+			printTabbed("level_file_name=" + request->levelFileName);
+		}
+		if (iniGroup->hasKey("pak_file_name")) {
+			request->pakFileName = iniGroup->getString("pak_file_name");
+			printTabbed("pak_file_name=" + request->pakFileName);
+		}
+		if (iniGroup->hasKey("spline_file_names")) {
+			request->splineFileNames = getTokens(
+				iniGroup->getString("spline_file_names")
+			);
+			printTabbed("spline_file_names=" +
+				iniGroup->getString("spline_file_names"));
+		}
+		if (iniGroup->hasKey("simple_death_plane")) {
+			try {
+				levelOptions->simpleDeathPlane = 
+					iniGroup->getFloat("simple_death_plane", DISABLED_PLANE);
+				printTabbed("simple_death_plane = " +
+					std::to_string(levelOptions->simpleDeathPlane));
+			} catch (...) {
+				printWarning("Invalid simple_death_plane given: " +
+					iniGroup->getString("simple_death_plane"));
+			}
+		}
+		std::string coordinates;
+		try {
+			coordinates = iniGroup->getString("spawn_coordinates", "0,0,0");
+			printTabbed("spawn_coordinates=" + coordinates);
+			levelOptions->startPosition = getPosition(coordinates);
+		}
+		catch (...) {
+			printWarning("Invalid spawn coordinates given: \"" + coordinates +
+				".\" Using 0, 0, 0 as default.");
+		}
+		try {
+			coordinates = iniGroup->getString("victory_coordinates", "0,0,0");
+			printTabbed("victory_coordinates=" + coordinates);
+			levelOptions->endPosition = getPosition(coordinates);
+		}
+		catch (...) {
+			printWarning("Invalid victory coordinates given: \"" +
+				coordinates + ".\" Using 0, 0, 0 as default.");
+		}
+		if (request->levelID == -1 && request->landTableName.empty()) {
+			printDebug("");
+			printTabbed("(Warning) This level import does not have a level_id "
+				"or land_table_name set.");
+			printTabbed("(Warning) Discarding import, please check your "
+				"level_options.ini file if this is a mistake.");
+			hadFailedRequest = true;
+			delete levelOptions;
+			delete request;
+			continue;
+		}
+		request->levelOptions = levelOptions;
+		requests.push_back(request);
 	}
-	printDebug("Done reading from level_options.");
-	iniFile.close();
+	if (requests.size() == 0 && !hadFailedRequest) {
+		printDebug("(Warning) Error reading from options file. (is it"
+			"missing?)");
+	}
+	printDebug("");
+	printDebug("Done reading options.");
+	delete iniFile;
+	return requests;
 }
 
 /**
  * Automatically detect and attempt to read all Spline files. This function
  * checks both the gd_PC folder and a "paths" folder for Spline files.
  */
-LoopHead** IniReader::readSplines() {
+LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
+	std::vector<std::string> fileNamesCopy;
+	copy(
+		splineFileNames.begin(),
+		splineFileNames.end(),
+		std::back_inserter(fileNamesCopy)
+	);
+	for (unsigned int i = 0; i < fileNamesCopy.size(); i++) {
+		fileNamesCopy[i] = removeFileExtension(fileNamesCopy[i]).append(".ini");
+	}
 	std::vector<LoopHead*> splines{};
 	std::string pathToPathsFolder = std::string(gdPCPath) + "\\Paths";
 
-	// Find ini files in the gd_PC folder, assume they are spline files.
+	// Attempt to find the given spline file names in the mod's gdPC folder.
 	for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
 		std::string filePath = file.path().string();
-		if (filePath.find(".ini") != std::string::npos) {
-			printDebug("Spline file \"" + filePath + "\" found.");
-			LoopHead* spline = readSpline(filePath);
-			if (spline != nullptr) {
-				splines.push_back(spline);
-			}
-		}
-	}
-
-	// Find ini files in the paths folder, assume they are spline files. 
-	if (std::filesystem::exists(pathToPathsFolder)) {
-		for (const auto& file :
-			std::filesystem::directory_iterator(pathToPathsFolder)) {
-			std::string filePath = file.path().string();
-
-			if (filePath.find(".ini") != std::string::npos) {
+		for (std::string splineFileName : fileNamesCopy) {
+			if (filePath.find(splineFileName) != std::string::npos) {
 				printDebug("Spline file \"" + filePath + "\" found.");
 				LoopHead* spline = readSpline(filePath);
 				if (spline != nullptr) {
 					splines.push_back(spline);
+				}
+			}
+		}
+	}
+
+	// Attempt to find the given spline file names in the mod's Paths folder.
+	if (std::filesystem::exists(pathToPathsFolder)) {
+		for (const auto& file :
+			std::filesystem::directory_iterator(pathToPathsFolder)) {
+			std::string filePath = file.path().string();
+			for (std::string splineFileName : fileNamesCopy) {
+				if (filePath.find(splineFileName) != std::string::npos) {
+					printDebug("Spline file \"" + filePath + "\" found.");
+					LoopHead* spline = readSpline(filePath);
+					if (spline != nullptr) {
+						splines.push_back(spline);
+					}
 				}
 			}
 		}
@@ -210,8 +199,8 @@ LoopHead** IniReader::readSplines() {
 		splinesArray[size - 1] = nullptr;
 		return splinesArray;
 	}
-
-	printDebug("No splines found.");
+	printDebug("(Warning) None of the given splines were found.");
+	printDebug("(Warning) Double check the file names, skipping spline read.");
 	return nullptr;
 }
 
@@ -221,135 +210,76 @@ LoopHead** IniReader::readSplines() {
  *
  * @param [filePath] - The full file path to your ini file.
  * 
- * TODO(J-N-R): Ask MainMemory if I can reuse their ProcessPathList function at
+ * Based on MainMemory's ProcessPathList function at
  * https://github.com/X-Hax/sa2-mod-loader/blob/master/SA2ModLoader/EXEData.cpp
  */
 LoopHead* IniReader::readSpline(std::string filePath) {
-	std::ifstream splineFile;
-	splineFile.open(filePath, std::ios::in);
-	if (!splineFile.is_open()) {
-		printDebug("(Warning) Error opening spline file.");
+	IniFile* splineFile = new IniFile(filePath);
+	IniGroup* iniGroup;
+	std::vector<LoopPoint> points;
+	for (unsigned int i = 0; i < 9999; i++) {
+		std::string index = std::to_string(i);
+		if (!splineFile->hasGroup(index)) {
+			break;
+		}
+		iniGroup = splineFile->getGroup(index);
+		points.push_back({
+			(int16_t)iniGroup->getIntRadix("XRotation", 16),
+			(int16_t)iniGroup->getIntRadix("ZRotation", 16),
+			iniGroup->getFloat("Distance"),
+			*getPosition(iniGroup->getString("Position", "0,0,0")),
+		});
+	}
+	iniGroup = splineFile->getGroup("");
+	LoopHead* spline = new LoopHead;
+	// anonymous_0 must default to 1 in SA2 to work.
+	spline->anonymous_0 = (int16_t)iniGroup->getInt("Unknown", 1);
+	spline->Count = (int16_t)points.size();
+	spline->TotalDistance = iniGroup->getFloat("TotalDistance");
+	spline->Points = new LoopPoint[spline->Count];
+	spline->Object = (ObjectFuncPtr)iniGroup->getIntRadix("Code", 16);
+	if (!iniGroup->hasKey("Code")) {
+		printDebug("(Warning) The spline found at " + filePath + " is missing "
+			"the \"Code\" field. ");
+		printDebug("(Warning) Did you forget to add it? Throwing away spline.");
+		delete spline;
 		return nullptr;
 	}
-	float totalDistance{};
-	std::string code{};
-	std::vector<LoopPoint> points{};
-	try {
-		// Read spline file header.
-		std::string line;
-		while (line.find("[") == std::string::npos) {
-			std::getline(splineFile, line);
-			if (line.find('=') != std::string::npos) {
-				std::string key = line.substr(0, line.find('='));
-				std::string value = line.substr(line.find('=') + 1);
-				if (key == "TotalDistance") {
-					totalDistance = std::stof(value);
-				}
-				else if (key == "Code") {
-					code = value;
-				}
-			}
-		}
-
-		// Read spline data and create spline objects.
-		while (line.find("[") != std::string::npos &&
-			!splineFile.eof()) {
-			short xRot{}, zRot{};
-			float distance{};
-			float coords[3]{};
-			std::getline(splineFile, line);
-			while (line.find("[") == std::string::npos &&
-				!splineFile.eof()) {
-				if (line.find('=') != std::string::npos) {
-					std::string key = line.substr(0, line.find('='));
-					std::string value = line.substr(line.find('=') + 1);
-					if (key == "XRotation") {
-						xRot = (short)std::stoi(value, 0, 16);
-					}
-					else if (key == "ZRotation") {
-						zRot = (short)std::stoi(value, 0, 16);
-					}
-					else if (key == "Distance") {
-						distance = std::stof(value);
-					}
-					else if (key == "Position") {
-						// Remove spaces from line.
-						std::string::iterator end_pos =
-							std::remove(value.begin(), value.end(),
-								' ');
-						value.erase(end_pos, value.end());
-						std::istringstream ss(value);
-						try {
-							std::string token{};
-							for (int i = 0; i < 3; i++) {
-								std::getline(ss, token, ',');
-								coords[i] = std::stof(token);
-							}
-						}
-						// Print debug information in case of error.
-						catch (const std::exception& e) {
-							printDebug("(Warning) Unexpected "
-								"error/value in spline point: " +
-								value + ".");
-							printDebug("(Warning) Deleting spline.");
-							printDebug(e.what());
-							return nullptr;
-						}
-					}
-				}
-				std::getline(splineFile, line);
-			}
-
-			// Create new point from read data.
-			LoopPoint point{
-				xRot,
-				zRot,
-				distance,
-				{
-					coords[0],
-					coords[1],
-					coords[2]
-				}
-			};
-			points.push_back(point);
-		}
-		LoopHead* spline = new LoopHead;
-		spline->anonymous_0 = (int16_t)1;
-		spline->Count = (int16_t)points.size();
-		spline->TotalDistance = totalDistance;
-		spline->Points = new LoopPoint[points.size()];
-
-		// If spline is for rails, load spline as rail data.
-		if (code == "4980C0") {
-			spline->Object = (ObjectFuncPtr)RailController;
-		}
-		// If spline is for loops, load spline as loop data.
-		else if (code == "497B50") {
-			spline->Object = (ObjectFuncPtr)LoopController;
-		}
-		else {
-			printDebug("(Warning) Unknown spline code detected. "
-				"Deleting spline.");
-			return nullptr;
-		}
-		std::copy(points.begin(), points.end(), spline->Points);
-		splineFile.close();
-		return spline;
-	}
-	// Print debugs if there was an error loading the spline.
-	catch (const std::exception& e) {
-		printDebug("(ERROR) Invalid value found while reading "
-			"spline file.");
-		printDebug(e.what());
-	}
-	splineFile.close();
-	return nullptr;
+	std::copy(points.begin(), points.end(), spline->Points);
+	delete splineFile;
+	return spline;
 }
 
-// Debug message helper.
-void IniReader::printDebug(std::string message) {
-	PrintDebug(("[My Level Mod] " + message).c_str());
+NJS_VECTOR* IniReader::getPosition(std::string position) {
+	std::vector<std::string> tokens = getTokens(position);
+	float coords[3]{};
+	for (int i = 0; i < 3; i++) {
+		coords[i] = std::stof(tokens[i]);
+	}
+	return new NJS_VECTOR{ coords[0], coords[1], coords[2] };
 }
+
+std::vector<std::string> IniReader::getTokens(std::string value) {
+	std::string valueCopy = value; // C++ 11 forces deep copy.
+	std::string::iterator end_pos = std::remove(
+		valueCopy.begin(),
+		valueCopy.end(),
+		' ');
+	valueCopy.erase(end_pos, valueCopy.end());
+	std::vector<std::string> tokens;
+	if (valueCopy.empty()) {
+		return tokens;
+	}
+	std::stringstream ss(valueCopy);
+	std::string token;
+	while (!ss.eof()) {
+		std::getline(ss, token, ',');
+		tokens.push_back(token);
+	}
+	return tokens;
+}
+
+
 
 /*************************************************************************
  * Copyright 2022 Google LLC

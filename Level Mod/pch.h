@@ -12,7 +12,7 @@
 // Windows Header Files
 #include <windows.h>
 #include "SA2ModLoader.h"
-#include "GameObject.h"
 #include "LandTableInfo.h"
+#include "ImportStructs.h"
 #include "FunctionHook.h"
 #endif // PCH_H

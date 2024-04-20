@@ -2,7 +2,7 @@
  * MyLevelMod.cpp
  * 
  * Description:
- *    Main execution script for My Level Mod, a simple way of importing
+ *    The main execution script for My Level Mod, a simple way of importing
  *    levels into Sonic Adventure 2 without having to write code. But for you
  *    creative few, this is where you can add in your own code! Go crazy! Just
  *    try not to break anything :)
@@ -11,24 +11,26 @@
  */
 
 #include "pch.h"
+#include "IniReader.h"
 #include "LevelImporter.h"
-
-LevelImporter* myLevelMod;
+#include "SetupHelpers.h"
 
 extern "C" {
-	// Required.
-	__declspec(dllexport) void Init(const char* path, const HelperFunctions& helperFunctions) {
-		// Loads and Imports level. Do not remove.
-		myLevelMod = new LevelImporter(path, helperFunctions);
-		myLevelMod->init();
+	// Runs a single time once the game starts up. Required for My Level Mod.
+	__declspec(dllexport) void Init(
+			const char* modFolderPath,
+			const HelperFunctions& helperFunctions) {
+		myLevelModInit(modFolderPath, helperFunctions);
 	}
 	
-	// Required.
+	// Runs for every frame while the game is on. Required for My Level Mod.
     __declspec(dllexport) void __cdecl OnFrame() {
-		// My Level Mod OnFrame function. Do not remove.
-		if (myLevelMod != nullptr) {
-			myLevelMod->onFrame();
-		}
+		myLevelModOnFrame();
+	}
+
+	// Runs when the game closes. Required for My Level Mod.
+	__declspec(dllexport) void __cdecl OnExit() {
+		myLevelModExit();
 	}
 
 	__declspec(dllexport) ModInfo SA2ModInfo = { ModLoaderVer };
@@ -36,16 +38,12 @@ extern "C" {
 
 // Required.
 // A Function 'Hook,' that automatically runs code whenever a the game has
-// loaded a level. Feel free to add logic here!
+// loaded a level.
 void onLevelLoad();
 FunctionHook<void> loadLevelHook(InitCurrentLevelAndScreenCount, onLevelLoad);
 void onLevelLoad() {
 	loadLevelHook.Original();
-
-	// Loads rails/loops/etc into the level. Do not remove.
-	if (myLevelMod != nullptr) {
-		myLevelMod->onLevelHook();
-	}
+	myLevelModLevelHook();
 }
 
 

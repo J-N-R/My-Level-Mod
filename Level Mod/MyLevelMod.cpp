@@ -15,15 +15,15 @@
 #include "LevelImporter.h"
 #include "SetupHelpers.h"
 
-SetupHelpers* myLevelMod;
+LevelImporter* myLevelMod;
 
 extern "C" {
 	// Runs a single time once the game starts up. Required for My Level Mod.
 	__declspec(dllexport) void Init(
 			const char* modFolderPath,
 			const HelperFunctions& helperFunctions) {
-		myLevelMod = new SetupHelpers(modFolderPath, helperFunctions);
-		myLevelMod->init();
+		myLevelMod = new LevelImporter(modFolderPath, helperFunctions);
+		myLevelModInit(modFolderPath, myLevelMod);
 	}
 	
 	// Runs for every frame while the game is on. Required for My Level Mod.
@@ -45,8 +45,8 @@ extern "C" {
 void onLevelLoad();
 FunctionHook<void> loadLevelHook(InitCurrentLevelAndScreenCount, onLevelLoad);
 void onLevelLoad() {
-	loadLevelHook.Original();
 	myLevelMod->onLevelLoad();
+	loadLevelHook.Original();
 }
 
 

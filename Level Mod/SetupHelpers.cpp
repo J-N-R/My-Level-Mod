@@ -26,100 +26,29 @@
 #define FIX_FILE_STRUCTURE true
 #define DEFAULT_SET_FILE "default_set_file.bin"
 
-SetupHelpers::SetupHelpers(
-		const char* modFolderPath,
-		const HelperFunctions& helperFunctions) {
-	this->modFolderPath = modFolderPath;
-	this->iniReader = new IniReader(modFolderPath);
-	this->levelImporter = new LevelImporter(modFolderPath, helperFunctions);
-}
-
-void SetupHelpers::init() {
+void myLevelModInit(const char* modFolderPath, LevelImporter* levelImporter) {
+	IniReader* iniReader = new IniReader(modFolderPath);
 	if (CHECK_FOR_UPDATE) {
-		checkForUpdate();
+		checkForUpdate(modFolderPath);
 	}
-	requests = iniReader->readLevelOptions();
-	printDebug("");
-	for (ImportRequest* request : requests) {
-		std::string landTableName = request->landTableName;
-		if (request->levelID != -1) {
-			landTableName = levelImporter->getLandTableName(request->levelID);
-		}
-		if (landTableName.empty()) {
-			printDebug("Found a level import without a level_id or "
-				"land_table_name set. Discarding import, please check your "
-				"level_options.ini file if this is a mistake.");
-			continue;
-		}
-		if (!request->levelFileName.empty() && !request->pakFileName.empty()) {
-			levelImporter->importLevel(
-				landTableName,
-				request->levelFileName,
-				request->pakFileName,
-				request->levelOptions
-			);
-		}
-		else {
-			levelImporter->importLevel(landTableName, request->levelOptions);
-		}
-	}
+	std::vector<ImportRequest> requests = iniReader->readLevelOptions();
+	levelImporter->importLevels(requests);
 	if (FIX_FILE_STRUCTURE) {
-		for (Level* level : levelImporter->levels) {
-			fixFileStructure(
-				levelImporter->getLevelID(level->landTableName)
-			);
-		}
-	}
-}
-
-void SetupHelpers::onFrame() {
-	if (levelImporter != nullptr) {
-		levelImporter->onFrame();
-	}
-}
-
-void SetupHelpers::onLevelLoad() {
-	if (levelImporter != nullptr
-			&& iniReader != nullptr
-			&& requests.size() > 0) {
-		// Recompute activeLevel since it has not been initialized yet.
-		levelImporter->resetActiveLevel();
-		if (levelImporter->activeLevel == nullptr) {
-			return;
-		}
-		std::string activeTableName = levelImporter->activeLevel->landTableName;
-		for (ImportRequest* request : requests) {
-			std::string requestTableName = request->landTableName;
-			if (request->levelID != -1) {
-				requestTableName = levelImporter->getLandTableName(request->levelID);
+		for (ImportRequest request : levelImporter->importRequests) {
+			LevelIDs levelID = request.levelID;
+			if (!request.landTableName.empty()) {
+				levelID = levelImporter->getLevelID(request.landTableName);
 			}
-			if (!request->splineFileNames.empty() && requestTableName.compare(activeTableName) == 0) {
-				request->levelOptions->splines = iniReader->readSplines(request->splineFileNames);
-			}
+			fixFileStructure(modFolderPath, levelID);
 		}
-		levelImporter->onLevelLoad();
 	}
-}
-
-void SetupHelpers::free() {
-	levelImporter->free();
-	delete levelImporter;
 	delete iniReader;
-	for (ImportRequest* request : requests) {
-		if (request->levelOptions != nullptr) {
-			delete request->levelOptions->startPosition;
-			delete request->levelOptions->endPosition;
-			delete request->levelOptions->splines;
-		}
-		delete request->levelOptions;
-		delete request;
-	}
 }
 
-void SetupHelpers::checkForUpdate() {
+void checkForUpdate(const char* modFolderPath) {
 	printDebug("Checking for updates...");
 	curl_global_init(CURL_GLOBAL_ALL);
-	std::string result{ };
+	std::string result;
 	CURL* curl = curl_easy_init();
 	if (!curl) {
 		printDebug("(Warning) Could not check for update. "
@@ -178,7 +107,7 @@ void SetupHelpers::checkForUpdate() {
 	curl_global_cleanup();
 }
 
-void SetupHelpers::fixFileStructure(LevelIDs levelID) {
+void fixFileStructure(const char* modFolderPath, LevelIDs levelID) {
 	std::string gdPCPath = std::string(modFolderPath).append("\\gd_PC\\");
 	std::string PRSPath = std::string(gdPCPath).append("PRS\\");
 	for (const auto& file : std::filesystem::directory_iterator(modFolderPath)) {
@@ -226,7 +155,7 @@ void SetupHelpers::fixFileStructure(LevelIDs levelID) {
 				fileName.begin(),
 				::tolower
 			);
-			std::string typeSuffix{};
+			std::string typeSuffix;
 			typeSuffix.push_back('_');
 			typeSuffix.push_back(type);
 			return

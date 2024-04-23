@@ -34,7 +34,7 @@ IniReader::IniReader(const char* modFolderPath) {
  * and which level features should be enabled. It is important to note that
  * level features only work for levels imported by level id.
  */
-std::vector<ImportRequest*> IniReader::readLevelOptions() {
+std::vector<ImportRequest> IniReader::readLevelOptions() {
 	printDebug("");
 	printDebug("Reading options from \"level_options.ini.\"");
 	IniFile* iniFile = new IniFile(optionsPath);
@@ -48,7 +48,7 @@ std::vector<ImportRequest*> IniReader::readLevelOptions() {
 	};
 
 	bool hadFailedRequest = false;
-	std::vector<ImportRequest*> requests;
+	std::vector<ImportRequest> requests;
 	for (auto it = iniFile->begin(); it != iniFile->end(); it++) {
 		if (it->first.empty()) {
 			continue;
@@ -56,31 +56,31 @@ std::vector<ImportRequest*> IniReader::readLevelOptions() {
 		printDebug("");
 		printDebug("Custom level [" + it->first + "] found:");
 		IniGroup* iniGroup = it->second;
-		ImportRequest* request = new ImportRequest;
-		LevelOptions* levelOptions = new LevelOptions;
+		ImportRequest request;
+		LevelOptions levelOptions;
 		if (iniGroup->hasKey("level_id")) {
 			try {
 				printTabbed("level_id=" + iniGroup->getString("level_id"));
-				request->levelID = (LevelIDs)iniGroup->getInt("level_id", -1);
+				request.levelID = (LevelIDs)iniGroup->getInt("level_id", -1);
 			} catch (...) {
 				printWarning("Invalid level_id given: \"" +
 					iniGroup->getString("level_id") + "\"");
 			}
 		}
 		if (iniGroup->hasKey("land_table_name")) {
-			request->landTableName = iniGroup->getString("land_table_name");
-			printTabbed("land_table_name=" + request->landTableName);
+			request.landTableName = iniGroup->getString("land_table_name");
+			printTabbed("land_table_name=" + request.landTableName);
 		}
 		if (iniGroup->hasKey("level_file_name")) {
-			request->levelFileName = iniGroup->getString("level_file_name");
-			printTabbed("level_file_name=" + request->levelFileName);
+			request.levelFileName = iniGroup->getString("level_file_name");
+			printTabbed("level_file_name=" + request.levelFileName);
 		}
 		if (iniGroup->hasKey("pak_file_name")) {
-			request->pakFileName = iniGroup->getString("pak_file_name");
-			printTabbed("pak_file_name=" + request->pakFileName);
+			request.pakFileName = iniGroup->getString("pak_file_name");
+			printTabbed("pak_file_name=" + request.pakFileName);
 		}
 		if (iniGroup->hasKey("spline_file_names")) {
-			request->splineFileNames = getTokens(
+			levelOptions.splineFileNames = getTokens(
 				iniGroup->getString("spline_file_names")
 			);
 			printTabbed("spline_file_names=" +
@@ -88,10 +88,10 @@ std::vector<ImportRequest*> IniReader::readLevelOptions() {
 		}
 		if (iniGroup->hasKey("simple_death_plane")) {
 			try {
-				levelOptions->simpleDeathPlane = 
+				levelOptions.simpleDeathPlane = 
 					iniGroup->getFloat("simple_death_plane", DISABLED_PLANE);
-				printTabbed("simple_death_plane = " +
-					std::to_string(levelOptions->simpleDeathPlane));
+				printTabbed("simple_death_plane=" +
+					std::to_string(levelOptions.simpleDeathPlane));
 			} catch (...) {
 				printWarning("Invalid simple_death_plane given: " +
 					iniGroup->getString("simple_death_plane"));
@@ -101,7 +101,7 @@ std::vector<ImportRequest*> IniReader::readLevelOptions() {
 		try {
 			coordinates = iniGroup->getString("spawn_coordinates", "0,0,0");
 			printTabbed("spawn_coordinates=" + coordinates);
-			levelOptions->startPosition = getPosition(coordinates);
+			levelOptions.startPosition = getPosition(coordinates);
 		}
 		catch (...) {
 			printWarning("Invalid spawn coordinates given: \"" + coordinates +
@@ -110,24 +110,22 @@ std::vector<ImportRequest*> IniReader::readLevelOptions() {
 		try {
 			coordinates = iniGroup->getString("victory_coordinates", "0,0,0");
 			printTabbed("victory_coordinates=" + coordinates);
-			levelOptions->endPosition = getPosition(coordinates);
+			levelOptions.endPosition = getPosition(coordinates);
 		}
 		catch (...) {
 			printWarning("Invalid victory coordinates given: \"" +
 				coordinates + ".\" Using 0, 0, 0 as default.");
 		}
-		if (request->levelID == -1 && request->landTableName.empty()) {
+		if (request.levelID == -1 && request.landTableName.empty()) {
 			printDebug("");
 			printTabbed("(Warning) This level import does not have a level_id "
 				"or land_table_name set.");
 			printTabbed("(Warning) Discarding import, please check your "
 				"level_options.ini file if this is a mistake.");
 			hadFailedRequest = true;
-			delete levelOptions;
-			delete request;
 			continue;
 		}
-		request->levelOptions = levelOptions;
+		request.levelOptions = levelOptions;
 		requests.push_back(request);
 	}
 	if (requests.size() == 0 && !hadFailedRequest) {
@@ -154,7 +152,7 @@ LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
 	for (unsigned int i = 0; i < fileNamesCopy.size(); i++) {
 		fileNamesCopy[i] = removeFileExtension(fileNamesCopy[i]).append(".ini");
 	}
-	std::vector<LoopHead*> splines{};
+	std::vector<LoopHead*> splines;
 	std::string pathToPathsFolder = std::string(gdPCPath) + "\\Paths";
 
 	// Attempt to find the given spline file names in the mod's gdPC folder.
@@ -224,7 +222,7 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 			(int16_t)iniGroup->getIntRadix("XRotation", 16),
 			(int16_t)iniGroup->getIntRadix("ZRotation", 16),
 			iniGroup->getFloat("Distance"),
-			*getPosition(iniGroup->getString("Position", "0,0,0")),
+			getPosition(iniGroup->getString("Position", "0,0,0")),
 		});
 	}
 	iniGroup = splineFile->getGroup("");
@@ -248,13 +246,13 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 	return spline;
 }
 
-NJS_VECTOR* IniReader::getPosition(std::string position) {
+NJS_VECTOR IniReader::getPosition(std::string position) {
 	std::vector<std::string> tokens = getTokens(position);
 	float coords[3]{};
 	for (int i = 0; i < 3; i++) {
 		coords[i] = std::stof(tokens[i]);
 	}
-	return new NJS_VECTOR{ coords[0], coords[1], coords[2] };
+	return NJS_VECTOR{ coords[0], coords[1], coords[2] };
 }
 
 std::vector<std::string> IniReader::getTokens(std::string value) {

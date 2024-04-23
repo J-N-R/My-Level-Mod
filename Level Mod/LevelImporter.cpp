@@ -20,6 +20,7 @@
 #include "pch.h"
 #include "LevelImporter.h"
 #include "SetupHelpers.h"
+#include "IniReader.h"
 #include <fstream>
 #include <string>
 #include <sstream>
@@ -34,17 +35,18 @@ LevelImporter::LevelImporter(
 		const char* modFolderPath,
 		const HelperFunctions& helperFunctions)
 			: helperFunctions(helperFunctions) {
+	this->iniReader = new IniReader(modFolderPath);
 	this->modFolderPath = std::string(modFolderPath);
 	this->gdPCPath = std::string(modFolderPath).append("\\gd_PC\\");
 	this->PRSPath = std::string(gdPCPath).append("PRS\\");
 }
 
-LandTableInfo* LevelImporter::importLevel(std::string landTableName) {
-	return importLevel(landTableName, nullptr);
+void LevelImporter::importLevel(std::string landTableName) {
+	importLevel(landTableName, {});
 }
 
-LandTableInfo* LevelImporter::importLevel(std::string landTableName, LevelOptions* levelOptions) {
-	return importLevel(
+void LevelImporter::importLevel(std::string landTableName, LevelOptions levelOptions) {
+	importLevel(
 		landTableName,
 		detectFile(gdPCPath, "sa2blvl"),
 		detectFile(PRSPath, "pak"),
@@ -52,61 +54,64 @@ LandTableInfo* LevelImporter::importLevel(std::string landTableName, LevelOption
 	);
 }
 
-LandTableInfo* LevelImporter::importLevel(std::string landTableName, std::string levelFileName, std::string pakFileName) {
-	return importLevel(landTableName, levelFileName, pakFileName, nullptr);
+void LevelImporter::importLevel(std::string landTableName, std::string levelFileName, std::string pakFileName) {
+	return importLevel(landTableName, levelFileName, pakFileName, {});
 }
 
-LandTableInfo* LevelImporter::importLevel(std::string landTableName, std::string levelFileName, std::string pakFileName, LevelOptions* levelOptions) {
+void LevelImporter::importLevel(std::string landTableName, std::string levelFileName, std::string pakFileName, LevelOptions levelOptions) {
+	if (landTableName.empty()) {
+		printDebug("Invalid land table name or level ID. Skipping import");
+		return;
+	}
 	if (levelFileName.empty() || pakFileName.empty()) {
 		printDebug("Invalid level or pak file name. Skipping import.");
-		return nullptr;
+		return;
 	}
-	printDebug("Attempting to import \"" + levelFileName + ".sa2blvl\" "
-		"with texture pack \"" + pakFileName + ".pak\" over land table \"" +
-		landTableName + ".\"");
-	LandTableInfo* landTableInfo = new LandTableInfo(
-		gdPCPath + removeFileExtension(levelFileName).append(".sa2blvl")
-	);
-	NJS_TEXNAME* customTextureNames = new NJS_TEXNAME[NUMBER_OF_TEXTURES]{};
-	levels.push_back(new Level{
-		landTableName,
-		landTableInfo,
-		customTextureNames,
-		{ customTextureNames, NUMBER_OF_TEXTURES },
-		levelOptions
-	});
-	LandTable* newLandTable = landTableInfo->getlandtable();
-	if (newLandTable == nullptr) {
-		printDebug("Error generating land table from the given files. "
-			"Skipping import.");
-		return nullptr;
+	ImportRequest request;
+	request.levelID = getLevelID(landTableName);
+	request.landTableName = landTableName;
+	request.levelFileName = levelFileName;
+	request.pakFileName = pakFileName,
+	request.levelOptions = levelOptions;
+	importRequests.push_back(request);
+	// Positions must be registered before the level is loaded.
+	registerPosition(levelOptions.startPosition, request.levelID, true);
+	registerPosition(levelOptions.endPosition, request.levelID, false);
+}
+
+void LevelImporter::importLevel(LevelIDs levelID) {
+	importLevel(levelID, {});
+}
+
+void LevelImporter::importLevel(LevelIDs levelID, LevelOptions levelOptions) {
+	importLevel(getLandTableName(levelID), levelOptions);
+}
+
+void LevelImporter::importLevel(LevelIDs levelID, std::string levelFileName, std::string pakFileName) {
+	importLevel(levelID, levelFileName, pakFileName, {});
+}
+
+void LevelImporter::importLevel(LevelIDs levelID, std::string levelFileName, std::string pakFileName, LevelOptions levelOptions) {
+	importLevel(getLandTableName(levelID), levelFileName, pakFileName, levelOptions);
+}
+
+void LevelImporter::importLevels(std::vector<ImportRequest> requests) {
+	for (ImportRequest request : requests) {
+		if (request.levelFileName.empty() || request.pakFileName.empty()) {
+			if (request.levelID != -1) {
+				importLevel(request.levelID, request.levelOptions);
+			} else {
+				importLevel(request.landTableName, request.levelOptions);
+			}
+			continue;
+		}
+		importLevel(
+			request.landTableName,
+			request.levelFileName,
+			request.pakFileName,
+			request.levelOptions
+		);
 	}
-	LandTable* oldLandTable = (LandTable*)GetProcAddress(**datadllhandle, landTableName.c_str());
-	*oldLandTable = *newLandTable;
-	oldLandTable->TextureList = &levels.back()->textureList;
-	oldLandTable->TextureName = _strdup(removeFileExtension(pakFileName).c_str());
-	// Start positions must be registered before the level is loaded.
-	if (levelOptions != nullptr) {
-		registerStartPositions(levelOptions, landTableName);
-	}
-	printDebug("Level import was successful.");
-	return landTableInfo;
-}
-
-LandTableInfo* LevelImporter::importLevel(LevelIDs levelID) {
-	return importLevel(levelID, nullptr);
-}
-
-LandTableInfo* LevelImporter::importLevel(LevelIDs levelID, LevelOptions* levelOptions) {
-	return importLevel(getLandTableName(levelID), levelOptions);
-}
-
-LandTableInfo* LevelImporter::importLevel(LevelIDs levelID, std::string levelFileName, std::string pakFileName) {
-	return importLevel(levelID, levelFileName, pakFileName, nullptr);
-}
-
-LandTableInfo* LevelImporter::importLevel(LevelIDs levelID, std::string levelFileName, std::string pakFileName, LevelOptions* levelOptions) {
-	return importLevel(getLandTableName(levelID), levelFileName, pakFileName, levelOptions);
 }
 
 std::string LevelImporter::getLandTableName(LevelIDs levelID) {
@@ -122,36 +127,89 @@ LevelIDs LevelImporter::getLevelID(std::string landTableName) {
 }
 
 void LevelImporter::onFrame() {
-	if (activeLevel != nullptr && activeLevel->levelOptions != nullptr) {
-		float simpleDeathPlane = activeLevel->levelOptions->simpleDeathPlane;
+	if (activeLandTable != nullptr) {
+		float simpleDeathPlane = activeOptions.simpleDeathPlane;
 		// Enable simple death plane.
 		if (simpleDeathPlane == DISABLED_PLANE) {
 			return;
 		}
-		if (MainCharObj1 != nullptr && MainCharObj1[0] != nullptr
-			&& MainCharObj1[0]->Position.y <= simpleDeathPlane) {
+		if (MainCharObj1 != nullptr
+				&& MainCharObj1[0] != nullptr
+				&& MainCharObj1[0]->Position.y <= simpleDeathPlane) {
 			GameState = GameStates_NormalRestart;
 		}
 	}
 }
 
 void LevelImporter::onLevelLoad() {
-	resetActiveLevel();
-	if (activeLevel == nullptr) {
+	onLevelExit();
+	bool hasActiveRequest = false;
+	ImportRequest activeRequest;
+	for (ImportRequest request : importRequests) {
+		LevelIDs levelID = request.levelID;
+		if (CurrentLevel == levelID) {
+			hasActiveRequest = true;
+			activeRequest = request;
+			break;
+		}
+	}
+	if (!hasActiveRequest) {
 		return;
 	}
 	printDebug("Custom level load detected.");
-	LevelOptions* levelOptions = activeLevel->levelOptions;
-	if (levelOptions == nullptr) {
-		printDebug("No My Level Mod features enabled, skipping load logic.");
+	printDebug("Attempting to import \"" + activeRequest.levelFileName +
+		".sa2blvl\" with texture pack \"" + activeRequest.pakFileName +
+		".pak\" over land table \"" + activeRequest.landTableName + ".\"");
+	// Import level.
+	activeLandTable = new LandTableInfo(
+		gdPCPath + removeFileExtension(activeRequest.levelFileName).append(".sa2blvl")
+	);
+	NJS_TEXNAME* customTextureNames = new NJS_TEXNAME[NUMBER_OF_TEXTURES]{};
+	NJS_TEXLIST* texList = new NJS_TEXLIST{ customTextureNames, NUMBER_OF_TEXTURES };
+	LandTable* newLandTable = activeLandTable->getlandtable();
+	if (newLandTable == nullptr) {
+		printDebug("Error generating land table from the given files. "
+			"Skipping import.");
 		return;
 	}
-	LoopHead** splines = levelOptions->splines;
-	if (splines != nullptr) {
-		printDebug("Splines detected! Loading splines for level.");
-		LoadStagePaths(splines);
-		printDebug("Successfully loaded spline data.");
+	newLandTable->TextureList = texList;
+	newLandTable->TextureName = _strdup(removeFileExtension(activeRequest.pakFileName).c_str());
+	replaceLandTable(newLandTable, activeRequest.landTableName);
+
+	// Setup level features.
+	LevelOptions options = activeRequest.levelOptions;
+	// Positions are pre-registered in the importLevel function.
+	auto positionToString = [](NJS_VECTOR v) {
+		return
+			std::to_string(v.x) + ", " +
+			std::to_string(v.y) + ", " +
+			std::to_string(v.z) + ".";
+	};
+	printDebug("Setting spawn position to: " +
+		positionToString(options.startPosition));
+	printDebug("Setting victory position to: " +
+		positionToString(options.endPosition));
+	if (options.simpleDeathPlane != DISABLED_PLANE) {
+		printDebug("Setting simple death plane to: " +
+			std::to_string(options.simpleDeathPlane));
 	}
+	if (!options.splineFileNames.empty()) {
+		printDebug("Spline files detected.");
+		// TODO: Implement detectSplineFiles() when only one level is imported
+		activeSplines = iniReader->readSplines(options.splineFileNames);
+		if (activeSplines != nullptr) {
+			LoadStagePaths(activeSplines);
+		}
+	}
+	printDebug("Level import was successful.");
+}
+
+void LevelImporter::replaceLandTable(LandTable* newLandTable, std::string landTableName) {
+	LandTable* oldLandTable = (LandTable*)GetProcAddress(
+		**datadllhandle,
+		landTableName.c_str()
+	);
+	*oldLandTable = *newLandTable;
 }
 
 std::string LevelImporter::detectFile(std::string path, std::string fileExtension) {
@@ -166,20 +224,8 @@ std::string LevelImporter::detectFile(std::string path, std::string fileExtensio
 	return std::string();
 }
 
-void LevelImporter::registerStartPositions(LevelOptions* levelOptions, std::string landTableName) {
-	LevelIDs levelID = getLevelID(landTableName);
-	if (levelOptions->startPosition == nullptr) {
-		levelOptions->startPosition = new NJS_VECTOR{ 0, 0, 0 };
-	}
-	if (levelOptions->endPosition == nullptr) {
-		levelOptions->endPosition = new NJS_VECTOR{ 0, 0, 0 };
-	}
-	registerPosition(levelOptions->startPosition, levelID, true);
-	registerPosition(levelOptions->endPosition, levelID, false);
-}
-
 void LevelImporter::registerPosition(
-		NJS_VECTOR* position,
+		NJS_VECTOR position,
 		LevelIDs levelID,
 		bool isStart) {
 	StartPosition startPosition = {
@@ -187,9 +233,9 @@ void LevelImporter::registerPosition(
 		0, // Single player rotation
 		0, // Multiplayer, P1 rotation
 		0, // Multiplayer, P2 rotation
-		*position, // Single player
-		*position, // Multiplayer, P1
-		*position  // Multiplayer, P2
+		position, // Single player
+		position, // Multiplayer, P1
+		position  // Multiplayer, P2
 	};
 	if (isStart) {
 		helperFunctions.RegisterStartPosition(CurrentCharacter, startPosition);
@@ -199,26 +245,33 @@ void LevelImporter::registerPosition(
 	}
 }
 
-void LevelImporter::resetActiveLevel() {
-	activeLevel = nullptr;
-	for (Level* level : levels) {
-		if (CurrentLevel == getLevelID(level->landTableName)) {
-			activeLevel = level;
-		}
+void LevelImporter::onLevelExit() {
+	activeOptions = {};
+	if (activeSplines != nullptr) {
+		delete[] activeSplines;
+	}
+	if (activeLandTable != nullptr &&
+		activeLandTable->getlandtable() != nullptr) {
+		delete[] activeLandTable->getlandtable()->TextureList->textures;
+		delete activeLandTable->getlandtable()->TextureList;
+		delete activeLandTable->getlandtable();
+		delete activeLandTable;
 	}
 }
 
 void LevelImporter::free() {
-	for (Level* level : levels) {
-		LandTableInfo* landTableInfo = level->landTableInfo;
-		if (landTableInfo != nullptr &&
-				landTableInfo->getlandtable() != nullptr) {
-			delete landTableInfo->getlandtable()->TextureList;
-			delete landTableInfo->getlandtable();
-			delete landTableInfo;
-		}
-		delete level->textureNames;
-		delete level;
+	if (activeLandTable != nullptr &&
+			activeLandTable->getlandtable() != nullptr) {
+		delete[] activeLandTable->getlandtable()->TextureList->textures;
+		delete activeLandTable->getlandtable()->TextureList;
+		delete activeLandTable->getlandtable();
+		delete activeLandTable;
+	}
+	if (activeSplines != nullptr) {
+		delete[] activeSplines;
+	}
+	if (iniReader != nullptr) {
+		delete iniReader;
 	}
 }
 

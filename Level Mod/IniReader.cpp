@@ -149,16 +149,19 @@ LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
 		splineFileNames.end(),
 		std::back_inserter(fileNamesCopy)
 	);
+	boolean readAllFiles = splineFileNames.empty();
 	for (unsigned int i = 0; i < fileNamesCopy.size(); i++) {
 		fileNamesCopy[i] = removeFileExtension(fileNamesCopy[i]).append(".ini");
 	}
 	std::vector<LoopHead*> splines;
 	std::string pathToPathsFolder = std::string(gdPCPath) + "\\Paths";
 
-	// Attempt to find the given spline file names in the mod's gdPC folder.
-	for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
-		std::string filePath = file.path().string();
-		for (std::string splineFileName : fileNamesCopy) {
+	/* 
+	  Reads a spline from a given file if it is present in a given set of file
+	  names.
+	*/
+	auto readSplineFiles = [](std::string filePath, std::vector<std::string> fileNames, std::vector<LoopHead*> splines) {
+		for (std::string splineFileName : fileNames) {
 			if (filePath.find(splineFileName) != std::string::npos) {
 				printDebug("Spline file \"" + filePath + "\" found.");
 				LoopHead* spline = readSpline(filePath);
@@ -167,21 +170,36 @@ LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
 				}
 			}
 		}
+	};
+
+	/* Reads a spline from a given file. Only use if there is one level. */
+	auto readAllSplineFiles = [](std::string filePath, std::vector<LoopHead*> &splines) {
+		if (filePath.find(".ini") != std::string::npos) {
+			printDebug("Spline file \"" + filePath + "\" found.");
+			LoopHead* spline = readSpline(filePath);
+			if (spline != nullptr) {
+				splines.push_back(spline);
+			}
+		}
+	};
+
+	// Attempt to find the given spline file names in the mod's gdPC folder.
+	for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
+		if (readAllFiles) {
+			readAllSplineFiles(file.path().string(), splines);
+		} else {
+			readSplineFiles(file.path().string(), fileNamesCopy, splines);
+		}
 	}
 
 	// Attempt to find the given spline file names in the mod's Paths folder.
 	if (std::filesystem::exists(pathToPathsFolder)) {
 		for (const auto& file :
 			std::filesystem::directory_iterator(pathToPathsFolder)) {
-			std::string filePath = file.path().string();
-			for (std::string splineFileName : fileNamesCopy) {
-				if (filePath.find(splineFileName) != std::string::npos) {
-					printDebug("Spline file \"" + filePath + "\" found.");
-					LoopHead* spline = readSpline(filePath);
-					if (spline != nullptr) {
-						splines.push_back(spline);
-					}
-				}
+			if (readAllFiles) {
+				readAllSplineFiles(file.path().string(), splines);
+			} else {
+				readSplineFiles(file.path().string(), fileNamesCopy, splines);
 			}
 		}
 	}
@@ -194,8 +212,11 @@ LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
 		splinesArray[size - 1] = nullptr;
 		return splinesArray;
 	}
-	printDebug("(Warning) None of the given splines were found.");
-	printDebug("(Warning) Double check the file names, skipping spline read.");
+	printDebug("(Warning) No splines were successfully added.");
+	if (!splineFileNames.empty()) {
+		printDebug("(Warning) Double check the file names, skipping spline "
+			"read.");
+	}
 	return nullptr;
 }
 

@@ -195,7 +195,13 @@ void LevelImporter::onLevelLoad() {
 	}
 	if (!options.splineFileNames.empty()) {
 		printDebug("Spline files detected.");
-		// TODO: Implement detectSplineFiles() when only one level is imported
+		activeSplines = iniReader->readSplines(options.splineFileNames);
+		if (activeSplines != nullptr) {
+			LoadStagePaths(activeSplines);
+		}
+	}
+	else if (importRequests.size() == 1) {
+		printDebug("Attempting to look for splines.");
 		activeSplines = iniReader->readSplines(options.splineFileNames);
 		if (activeSplines != nullptr) {
 			LoadStagePaths(activeSplines);

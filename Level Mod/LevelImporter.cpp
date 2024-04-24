@@ -178,6 +178,7 @@ void LevelImporter::onLevelLoad() {
 
 	// Setup level features.
 	LevelOptions options = activeRequest.levelOptions;
+	activeOptions = options;
 	// Positions are pre-registered in the importLevel function.
 	auto positionToString = [](NJS_VECTOR v) {
 		return

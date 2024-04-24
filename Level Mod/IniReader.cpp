@@ -160,7 +160,7 @@ LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
 	  Reads a spline from a given file if it is present in a given set of file
 	  names.
 	*/
-	auto readSplineFiles = [](std::string filePath, std::vector<std::string> fileNames, std::vector<LoopHead*> splines) {
+	auto readSplineFile = [&splines](std::string filePath, std::vector<std::string> fileNames) mutable {
 		for (std::string splineFileName : fileNames) {
 			if (filePath.find(splineFileName) != std::string::npos) {
 				printDebug("Spline file \"" + filePath + "\" found.");
@@ -173,7 +173,7 @@ LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
 	};
 
 	/* Reads a spline from a given file. Only use if there is one level. */
-	auto readAllSplineFiles = [](std::string filePath, std::vector<LoopHead*> &splines) {
+	auto readAllSplineFiles = [&splines](std::string filePath) mutable {
 		if (filePath.find(".ini") != std::string::npos) {
 			printDebug("Spline file \"" + filePath + "\" found.");
 			LoopHead* spline = readSpline(filePath);
@@ -186,9 +186,9 @@ LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
 	// Attempt to find the given spline file names in the mod's gdPC folder.
 	for (const auto& file : std::filesystem::directory_iterator(gdPCPath)) {
 		if (readAllFiles) {
-			readAllSplineFiles(file.path().string(), splines);
+			readAllSplineFiles(file.path().string());
 		} else {
-			readSplineFiles(file.path().string(), fileNamesCopy, splines);
+			readSplineFile(file.path().string(), fileNamesCopy);
 		}
 	}
 
@@ -197,9 +197,9 @@ LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
 		for (const auto& file :
 			std::filesystem::directory_iterator(pathToPathsFolder)) {
 			if (readAllFiles) {
-				readAllSplineFiles(file.path().string(), splines);
+				readAllSplineFiles(file.path().string());
 			} else {
-				readSplineFiles(file.path().string(), fileNamesCopy, splines);
+				readSplineFile(file.path().string(), fileNamesCopy);
 			}
 		}
 	}

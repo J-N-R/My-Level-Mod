@@ -18,7 +18,7 @@
 #include <sstream>
 #include <string>
 // Current version of My Level Mod.
-#define VERSION 4.4f
+#define VERSION 4.5f
 #define UPDATE_URL "https://raw.githubusercontent.com/J-N-R/My-Level-Mod/master/VERSION.txt"
  // Whether My Level Mod should check the internet for updates to My Level Mod.
 #define CHECK_FOR_UPDATE true
@@ -145,7 +145,7 @@ void fixFileStructure(const char* modFolderPath, LevelIDs levelID) {
 			}
 		}
 	}
-	if (levelID != -1) {
+	if (levelID != LevelIDs_Invalid) {
 		auto isSetFile = [](auto filePath, std::string levelIDString, char type) -> bool {
 			// C++ 11 forces deep copy.
 			std::string fileName = filePath.filename().string();

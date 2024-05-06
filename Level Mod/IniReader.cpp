@@ -61,7 +61,8 @@ std::vector<ImportRequest> IniReader::readLevelOptions() {
 		if (iniGroup->hasKey("level_id")) {
 			try {
 				printTabbed("level_id=" + iniGroup->getString("level_id"));
-				request.levelID = (LevelIDs)iniGroup->getInt("level_id", -1);
+				request.levelID = 
+					(LevelIDs)iniGroup->getInt("level_id", LevelIDs_Invalid);
 			} catch (...) {
 				printWarning("Invalid level_id given: \"" +
 					iniGroup->getString("level_id") + "\"");
@@ -116,7 +117,7 @@ std::vector<ImportRequest> IniReader::readLevelOptions() {
 			printWarning("Invalid victory coordinates given: \"" +
 				coordinates + ".\" Using 0, 0, 0 as default.");
 		}
-		if (request.levelID == -1 && request.landTableName.empty()) {
+		if (request.levelID == LevelIDs_Invalid && request.landTableName.empty()) {
 			printDebug("");
 			printTabbed("(Warning) This level import does not have a level_id "
 				"or land_table_name set.");

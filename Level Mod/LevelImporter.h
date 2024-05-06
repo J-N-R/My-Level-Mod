@@ -117,21 +117,29 @@ class LevelImporter {
 
 		/* Runs on every frame, used to enable My Level Mod features. */
 		void onFrame();
+
 		/*
-		  Enables features that require running when a level loads. Currently
-		  used to enable loading splines for levels imported by level id.
+		  Loads a custom level and its resources if the game attempts to load a
+		  level designated for replacement.
 		*/
 		void onLevelLoad();
+
 		/*
 		  Frees the memory allocated by loading the previous custom level. A
 		  no-op if the last level was not a custom level.
 		*/
-		void onLevelExit();
+		void freeLevelResources();
+
 		/* Frees the memory allocated by LevelImporter. */
 		void free();
 
-		/* A pointer to the active custom land table. */
-		LandTableInfo* activeLandTable;
+		/*
+		  A list of pointers to the currently loaded custom land tables. 
+		  Typically containing one element, the only scenario this list has
+		  multiple elements is if multiple chao gardens are being replaced.
+		*/
+		std::vector<LandTableInfo*> activeLandTables;
+
 		std::vector<ImportRequest> importRequests;
 		LevelIDs getLevelID(std::string landTableName);
 		std::string getLandTableName(LevelIDs levelID);
@@ -142,9 +150,14 @@ class LevelImporter {
 		std::string gdPCPath;
 		std::string PRSPath;
 		IniReader* iniReader;
-		LoopHead** activeSplines;
+		std::vector<LoopHead**> activeSplines;
 		LevelOptions activeOptions;
 		const HelperFunctions& helperFunctions;
+		LandTable* generateLandTable(std::string levelFileName,
+			std::string pakFileName,
+			std::string landTableName
+		);
+		void setLevelOptions(LevelOptions options);
 		/*
 		  Imports a level into Sonic Adventure 2 by replacing an existing
 		  level's land table. Warning: This method keeps the LevelHeader.Init

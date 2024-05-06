@@ -98,7 +98,7 @@ void LevelImporter::importLevel(LevelIDs levelID, std::string levelFileName, std
 void LevelImporter::importLevels(std::vector<ImportRequest> requests) {
 	for (ImportRequest request : requests) {
 		if (request.levelFileName.empty() || request.pakFileName.empty()) {
-			if (request.levelID != -1) {
+			if (request.levelID != LevelIDs_Invalid) {
 				importLevel(request.levelID, request.levelOptions);
 			} else {
 				importLevel(request.landTableName, request.levelOptions);
@@ -123,11 +123,11 @@ LevelIDs LevelImporter::getLevelID(std::string landTableName) {
 	if (lastDot != std::string::npos) {
 		return (LevelIDs)std::stoi(landTableName.substr(lastDot));
 	}
-	return  (LevelIDs)-1;
+	return  LevelIDs_Invalid;
 }
 
 void LevelImporter::onFrame() {
-	if (activeLandTable != nullptr) {
+	if (!activeLandTables.empty()) {
 		float simpleDeathPlane = activeOptions.simpleDeathPlane;
 		// Enable simple death plane.
 		if (simpleDeathPlane == DISABLED_PLANE) {
@@ -142,73 +142,89 @@ void LevelImporter::onFrame() {
 }
 
 void LevelImporter::onLevelLoad() {
-	onLevelExit();
-	bool hasActiveRequest = false;
-	ImportRequest activeRequest;
+	freeLevelResources();
+	bool levelWasImported = false;
 	for (ImportRequest request : importRequests) {
-		LevelIDs levelID = request.levelID;
-		if (CurrentLevel == levelID) {
-			hasActiveRequest = true;
-			activeRequest = request;
-			break;
+		bool isCurrentLevel = request.levelID == CurrentLevel;
+		bool isChaoGarden = CurrentLevel == LevelIDs_ChaoWorld;
+		bool isChaoGardenRequest = 
+			request.levelID == LevelIDs_Invalid && !request.landTableName.empty();
+		bool shouldImportLevel = isCurrentLevel || (isChaoGarden && isChaoGardenRequest);
+		if (shouldImportLevel) {
+			LandTable* newLandTable = generateLandTable(
+				request.levelFileName,
+				request.pakFileName,
+				request.landTableName
+			);
+			if (newLandTable != nullptr) {
+				replaceLandTable(newLandTable, request.landTableName);
+				setLevelOptions(request.levelOptions);
+				levelWasImported = true;
+			}
 		}
 	}
-	if (!hasActiveRequest) {
-		return;
+	if (levelWasImported) {
+		printDebug("Level import was successful.");
 	}
+}
+
+LandTable* LevelImporter::generateLandTable(std::string levelFileName, std::string pakFileName, std::string landTableName) {
 	printDebug("Custom level load detected.");
-	printDebug("Attempting to import \"" + activeRequest.levelFileName +
-		".sa2blvl\" with texture pack \"" + activeRequest.pakFileName +
-		".pak\" over land table \"" + activeRequest.landTableName + ".\"");
-	// Import level.
-	activeLandTable = new LandTableInfo(
-		gdPCPath + removeFileExtension(activeRequest.levelFileName).append(".sa2blvl")
+	printDebug("Attempting to import \"" + levelFileName + ".sa2blvl\" with "
+		"texture pack \"" + pakFileName + ".pak\" over land table \"" +
+		landTableName + ".\"");
+	LandTableInfo* landTableInfo = new LandTableInfo(
+		gdPCPath + removeFileExtension(levelFileName).append(".sa2blvl")
 	);
+	activeLandTables.push_back(landTableInfo);
 	NJS_TEXNAME* customTextureNames = new NJS_TEXNAME[NUMBER_OF_TEXTURES]{};
 	NJS_TEXLIST* texList = new NJS_TEXLIST{ customTextureNames, NUMBER_OF_TEXTURES };
-	LandTable* newLandTable = activeLandTable->getlandtable();
+	LandTable* newLandTable = landTableInfo->getlandtable();
 	if (newLandTable == nullptr) {
 		printDebug("Error generating land table from the given files. "
 			"Skipping import.");
-		return;
+		return nullptr;
 	}
 	newLandTable->TextureList = texList;
-	newLandTable->TextureName = _strdup(removeFileExtension(activeRequest.pakFileName).c_str());
-	replaceLandTable(newLandTable, activeRequest.landTableName);
+	newLandTable->TextureName = _strdup(removeFileExtension(pakFileName).c_str());
+	return newLandTable;
+}
 
-	// Setup level features.
-	LevelOptions options = activeRequest.levelOptions;
-	activeOptions = options;
-	// Positions are pre-registered in the importLevel function.
+void LevelImporter::setLevelOptions(LevelOptions options) {
 	auto positionToString = [](NJS_VECTOR v) {
 		return
 			std::to_string(v.x) + ", " +
 			std::to_string(v.y) + ", " +
 			std::to_string(v.z) + ".";
 	};
+	// No registerStartPosition calls here, as positions should be
+	// pre-registered in the importLevel function.
 	printDebug("Setting spawn position to: " +
 		positionToString(options.startPosition));
 	printDebug("Setting victory position to: " +
 		positionToString(options.endPosition));
+	// Simple death plane implemented in the onFrame function.
 	if (options.simpleDeathPlane != DISABLED_PLANE) {
 		printDebug("Setting simple death plane to: " +
 			std::to_string(options.simpleDeathPlane));
 	}
 	if (!options.splineFileNames.empty()) {
 		printDebug("Spline files detected.");
-		activeSplines = iniReader->readSplines(options.splineFileNames);
-		if (activeSplines != nullptr) {
-			LoadStagePaths(activeSplines);
+		LoopHead** spline = iniReader->readSplines(options.splineFileNames);
+		if (spline != nullptr) {
+			LoadStagePaths(spline);
+			activeSplines.push_back(spline);
 		}
 	}
 	else if (importRequests.size() == 1) {
 		printDebug("Attempting to look for splines.");
-		activeSplines = iniReader->readSplines(options.splineFileNames);
-		if (activeSplines != nullptr) {
-			LoadStagePaths(activeSplines);
+		LoopHead** spline = iniReader->readSplines(options.splineFileNames);
+		if (spline != nullptr) {
+			LoadStagePaths(spline);
+			activeSplines.push_back(spline);
 		}
 	}
-	printDebug("Level import was successful.");
+	activeOptions = options;
 }
 
 void LevelImporter::replaceLandTable(LandTable* newLandTable, std::string landTableName) {
@@ -252,31 +268,24 @@ void LevelImporter::registerPosition(
 	}
 }
 
-void LevelImporter::onLevelExit() {
+void LevelImporter::freeLevelResources() {
+	for (LoopHead** spline : activeSplines) {
+		if (spline != nullptr) {
+			delete[] spline;
+		}
+	}
+	activeSplines.clear();
+	for (LandTableInfo* landTableInfo : activeLandTables) {
+		if (landTableInfo != nullptr) {
+			delete landTableInfo;
+		}
+	}
+	activeLandTables.clear();
 	activeOptions = {};
-	if (activeSplines != nullptr) {
-		delete[] activeSplines;
-	}
-	if (activeLandTable != nullptr &&
-		activeLandTable->getlandtable() != nullptr) {
-		delete[] activeLandTable->getlandtable()->TextureList->textures;
-		delete activeLandTable->getlandtable()->TextureList;
-		delete activeLandTable->getlandtable();
-		delete activeLandTable;
-	}
 }
 
 void LevelImporter::free() {
-	if (activeLandTable != nullptr &&
-			activeLandTable->getlandtable() != nullptr) {
-		delete[] activeLandTable->getlandtable()->TextureList->textures;
-		delete activeLandTable->getlandtable()->TextureList;
-		delete activeLandTable->getlandtable();
-		delete activeLandTable;
-	}
-	if (activeSplines != nullptr) {
-		delete[] activeSplines;
-	}
+	freeLevelResources();
 	if (iniReader != nullptr) {
 		delete iniReader;
 	}

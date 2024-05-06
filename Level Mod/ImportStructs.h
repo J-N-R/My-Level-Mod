@@ -19,7 +19,7 @@ struct LevelOptions {
 */
 struct ImportRequest {
 	// Must have either levelID or landTableName defined. Defaults to -1.
-	LevelIDs levelID = (LevelIDs)-1;
+	LevelIDs levelID = LevelIDs_Invalid;
 	// Must have either levelID or landTableName defined. Defaults to empty
 	// string.
 	std::string landTableName = std::string();

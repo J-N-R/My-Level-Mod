@@ -186,9 +186,6 @@
     <ProjectReference Include="..\sa2-mod-loader\mod-loader-common\ModLoaderCommon\ModLoaderCommon.vcxproj">
       <Project>{ec0293f5-4bcf-46b2-8133-18caea141c5b}</Project>
     </ProjectReference>
-    <ProjectReference Include="..\sa2-mod-loader\SA2ModLoader\SA2ModLoader.vcxproj">
-      <Project>{3bf5c1b2-e3a4-43e7-9c2a-e445810834de}</Project>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -46,9 +46,14 @@ void LevelImporter::importLevel(std::string landTableName) {
 }
 
 void LevelImporter::importLevel(std::string landTableName, LevelOptions levelOptions) {
+	// Attempt to find chunk formatted file first, if not fallback on sa2blvl.
+	std::string levelFile = detectFile(gdPCPath, "sa2lvl");
+	if (levelFile.empty()) {
+		levelFile = detectFile(gdPCPath, "sa2blvl");
+	}
 	importLevel(
 		landTableName,
-		detectFile(gdPCPath, "sa2blvl"),
+		removeFileExtension(levelFile),
 		detectFile(PRSPath, "pak"),
 		levelOptions
 	);
@@ -170,21 +175,36 @@ void LevelImporter::onLevelLoad() {
 
 LandTable* LevelImporter::generateLandTable(std::string levelFileName, std::string pakFileName, std::string landTableName) {
 	printDebug("Custom level load detected.");
-	printDebug("Attempting to import \"" + levelFileName + ".sa2blvl\" with "
+
+	// Check and install the correct level format.
+	std::string levelFilePath;
+	std::string chunkFilePath = gdPCPath + removeFileExtension(levelFileName) + ".sa2lvl";
+	if (std::filesystem::exists(chunkFilePath)) {
+		if (helperFunctions.Mods->find("sa2-render-fix") == helperFunctions.Mods->end()) {
+			printDebug("Warning: Render Fix version 1.5 or newer is required to use sa2lvl files.");
+			return nullptr;
+		}
+		levelFilePath = chunkFilePath;
+	}
+	else {
+		levelFilePath = gdPCPath + removeFileExtension(levelFileName).append(".sa2blvl");
+		if (!std::filesystem::exists(levelFilePath)) {
+			printDebug("ERROR: " + levelFilePath + " not found! (sablvl also failed)");
+			return nullptr;
+		}
+	}
+	printDebug("Attempting to import \"" + levelFilePath + " with "
 		"texture pack \"" + pakFileName + ".pak\" over land table \"" +
 		landTableName + ".\"");
-	LandTableInfo* landTableInfo = new LandTableInfo(
-		gdPCPath + removeFileExtension(levelFileName).append(".sa2blvl")
-	);
+	LandTableInfo* landTableInfo = new LandTableInfo(levelFilePath);
 	activeLandTables.push_back(landTableInfo);
-	NJS_TEXNAME* customTextureNames = new NJS_TEXNAME[NUMBER_OF_TEXTURES]{};
-	NJS_TEXLIST* texList = new NJS_TEXLIST{ customTextureNames, NUMBER_OF_TEXTURES };
 	LandTable* newLandTable = landTableInfo->getlandtable();
 	if (newLandTable == nullptr) {
-		printDebug("Error generating land table from the given files. "
-			"Skipping import.");
+		printDebug("Error generating land table from \"" + levelFilePath + "\". Skipping import.");
 		return nullptr;
 	}
+	NJS_TEXNAME* customTextureNames = new NJS_TEXNAME[NUMBER_OF_TEXTURES]{};
+	NJS_TEXLIST* texList = new NJS_TEXLIST{ customTextureNames, NUMBER_OF_TEXTURES };
 	newLandTable->TextureList = texList;
 	newLandTable->TextureName = _strdup(removeFileExtension(pakFileName).c_str());
 	return newLandTable;
@@ -239,9 +259,8 @@ std::string LevelImporter::detectFile(std::string path, std::string fileExtensio
 	for (const auto& file : std::filesystem::directory_iterator(path)) {
 		const auto fileName = file.path().filename();
 		if (fileName.extension().string() == "." + fileExtension) {
-			printDebug("Detected level file, using \"" + fileName.string() +
-				"\" for import.");
-			return fileName.stem().string();
+			printDebug("Detected level file, using \"" + fileName.string() + "\" for import.");
+			return fileName.string(); 
 		}
 	}
 	return std::string();

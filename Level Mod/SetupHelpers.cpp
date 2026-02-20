@@ -18,7 +18,7 @@
 #include <sstream>
 #include <string>
 // Current version of My Level Mod.
-#define VERSION 4.5f
+#define VERSION 4.6f
 #define UPDATE_URL "https://raw.githubusercontent.com/J-N-R/My-Level-Mod/master/VERSION.txt"
  // Whether My Level Mod should check the internet for updates to My Level Mod.
 #define CHECK_FOR_UPDATE true

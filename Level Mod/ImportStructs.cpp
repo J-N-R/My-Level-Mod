@@ -12,3 +12,13 @@ std::string removeFileExtension(std::string fileName) {
 void printDebug(std::string message) {
 	PrintDebug(("[My Level Mod] " + message).c_str());
 }
+
+void showWarning(std::string message) {
+	printDebug(message);
+	MessageBoxA(
+		NULL,                     // Owner window
+		message.c_str(),          // The text to display
+		"[My Level Mod] warning", // The title of the window
+		MB_OK | MB_ICONWARNING    // Buttons + Warning Icon
+	);
+}

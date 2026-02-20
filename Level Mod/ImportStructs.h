@@ -43,3 +43,9 @@ std::string removeFileExtension(std::string fileName);
   mod loader's debug menu to see messages.
 */
 void printDebug(std::string message);
+
+/*
+  Displays a warning using a windows dialog, with required confirmation from the
+  user.
+*/
+void showWarning(std::string message);

@@ -44,7 +44,7 @@ std::vector<ImportRequest> IniReader::readLevelOptions() {
 	};
 
 	auto printWarning = [](std::string message) {
-		printDebug("    * (Warning) " + message);
+		showWarning("Warning: " + message);
 	};
 
 	bool hadFailedRequest = false;
@@ -94,8 +94,12 @@ std::vector<ImportRequest> IniReader::readLevelOptions() {
 				printTabbed("simple_death_plane=" +
 					std::to_string(levelOptions.simpleDeathPlane));
 			} catch (...) {
-				printWarning("Invalid simple_death_plane given: " +
-					iniGroup->getString("simple_death_plane"));
+				std::string simpleDeathPlaneStr = iniGroup->getString("simple_death_plane") ;
+				std::transform(simpleDeathPlaneStr.begin(), simpleDeathPlaneStr.end(), simpleDeathPlaneStr.begin(), ::toupper);
+				if (simpleDeathPlaneStr != "OFF" && simpleDeathPlaneStr != "FALSE") {
+					printWarning("Invalid simple_death_plane given: " +
+						iniGroup->getString("simple_death_plane"));
+				}
 			}
 		}
 		std::string coordinates;
@@ -119,9 +123,8 @@ std::vector<ImportRequest> IniReader::readLevelOptions() {
 		}
 		if (request.levelID == LevelIDs_Invalid && request.landTableName.empty()) {
 			printDebug("");
-			printTabbed("(Warning) This level import does not have a level_id "
-				"or land_table_name set.");
-			printTabbed("(Warning) Discarding import, please check your "
+			printWarning("This level import does not have a level_id "
+				"or land_table_name set. Discarding import, please check your "
 				"level_options.ini file if this is a mistake.");
 			hadFailedRequest = true;
 			continue;
@@ -130,8 +133,7 @@ std::vector<ImportRequest> IniReader::readLevelOptions() {
 		requests.push_back(request);
 	}
 	if (requests.size() == 0 && !hadFailedRequest) {
-		printDebug("(Warning) Error reading from options file. (is it"
-			"missing?)");
+		printWarning("Could not find options file. Please redownload My Level Mod.");
 	}
 	printDebug("");
 	printDebug("Done reading options.");
@@ -213,11 +215,9 @@ LoopHead** IniReader::readSplines(std::vector<std::string> splineFileNames) {
 		splinesArray[size - 1] = nullptr;
 		return splinesArray;
 	}
-	printDebug("(Warning) No splines were successfully added.");
-	if (!splineFileNames.empty()) {
-		printDebug("(Warning) Double check the file names, skipping spline "
-			"read.");
-	}
+	showWarning("Warning: Spline loading was called, but no splines were "
+		"successfully added. Double check the file names, skipping spline "
+		"read.");
 	return nullptr;
 }
 
@@ -256,9 +256,8 @@ LoopHead* IniReader::readSpline(std::string filePath) {
 	spline->Points = new LoopPoint[spline->Count];
 	spline->Object = (ObjectFuncPtr)iniGroup->getIntRadix("Code", 16);
 	if (!iniGroup->hasKey("Code")) {
-		printDebug("(Warning) The spline found at " + filePath + " is missing "
-			"the \"Code\" field. ");
-		printDebug("(Warning) Did you forget to add it? Throwing away "
+		showWarning("Warning: The spline found at " + filePath + " is missing "
+			"the \"Code\" field. Did you forget to add it? Throwing away "
 			"spline.");
 		delete spline;
 		return nullptr;

@@ -181,7 +181,7 @@ LandTable* LevelImporter::generateLandTable(std::string levelFileName, std::stri
 	std::string chunkFilePath = gdPCPath + removeFileExtension(levelFileName) + ".sa2lvl";
 	if (std::filesystem::exists(chunkFilePath)) {
 		if (helperFunctions.Mods->find("sa2-render-fix") == helperFunctions.Mods->end()) {
-			printDebug("Warning: Render Fix version 1.5 or newer is required to use sa2lvl files.");
+			showWarning("Warning: Render Fix version 1.5 or newer is required to use sa2lvl files.");
 			return nullptr;
 		}
 		levelFilePath = chunkFilePath;
@@ -189,7 +189,8 @@ LandTable* LevelImporter::generateLandTable(std::string levelFileName, std::stri
 	else {
 		levelFilePath = gdPCPath + removeFileExtension(levelFileName).append(".sa2blvl");
 		if (!std::filesystem::exists(levelFilePath)) {
-			printDebug("ERROR: " + levelFilePath + " not found! (sablvl also failed)");
+			showWarning("Error: " + levelFilePath + " not found! Sa2lvl was also checked for and "
+				"could not be found.");
 			return nullptr;
 		}
 	}
@@ -200,7 +201,7 @@ LandTable* LevelImporter::generateLandTable(std::string levelFileName, std::stri
 	activeLandTables.push_back(landTableInfo);
 	LandTable* newLandTable = landTableInfo->getlandtable();
 	if (newLandTable == nullptr) {
-		printDebug("Error generating land table from \"" + levelFilePath + "\". Skipping import.");
+		showWarning("Error: Failed to generate land table from \"" + levelFilePath + "\". Skipping import.");
 		return nullptr;
 	}
 	NJS_TEXNAME* customTextureNames = new NJS_TEXNAME[NUMBER_OF_TEXTURES]{};

@@ -113,34 +113,32 @@ void fixFileStructure(const char* modFolderPath, LevelIDs levelID) {
 	for (const auto& file : std::filesystem::directory_iterator(modFolderPath)) {
 		const auto filePath = file.path();
 		if (filePath.extension().string() == ".sa2blvl") {
-			printDebug("(ERROR) The level file has been detected to be in the "
-				"wrong folder.");
+			showWarning("ERROR: The level file has been detected to be in the "
+				"wrong folder. This will be automatically fixed, but expect a "
+			    "game crash.");
 			if (std::rename(filePath.string().c_str(),
 				(gdPCPath + filePath.filename().string()).c_str()) == 0) {
 				printDebug("Successfully moved the level file to the folder "
 					"~yourModFolder\\gd_PC\\.");
-				printDebug("Expect a game crash, please run the game again.");
 			}
 			else {
-				printDebug("(Warning) Error moving the level file to the "
-					"right folder.");
-				printDebug("(Warning) The level file should be saved to"
-					"(~yourModFolder\\gd_PC\\(your-level).sa2blvl).");
+				showWarning("ERROR: Could not move the level file to the "
+					"right folder. The level file should be saved to"
+					"(~yourModFolder\\gd_PC\\(your-level).sa2lvl).");
 			}
 		}
 		else if (filePath.extension().string() == ".pak") {
-			printDebug("(ERROR) The texture pack file has been detected to be "
-				"in the wrong folder.");
+			showWarning("ERROR: The texture pack file has been detected to be "
+				"in the wrong folder. This will be automatically fixed, but expect a "
+			    "game crash.");
 			if (std::rename(filePath.string().c_str(),
 				(PRSPath + filePath.filename().string()).c_str()) == 0) {
 				printDebug("Successfully moved the texture pack file to the "
 					"folder ~yourModFolder\\gd_PC\\.");
-				printDebug("Expect a game crash, please run the game again.");
 			}
 			else {
-				printDebug("(Warning) Error moving the texture pack file to "
-					"the right folder.");
-				printDebug("(Warning) The texture pack file should be saved "
+				showWarning("ERROR: Could not move the texture pack file to "
+					"the right folder. The texture pack file should be saved "
 					"to (~yourModFolder\\gd_PC\\PRS\\(your-texture-pak).pak).");
 			}
 		}
@@ -190,18 +188,17 @@ void fixFileStructure(const char* modFolderPath, LevelIDs levelID) {
 				uSetFileExists = true;
 			}
 			if (filePath.extension().string() == ".pak") {
-				printDebug("(ERROR) The texture pack file has been detected to be "
-					"in the wrong folder.");
+				showWarning("ERROR: The texture pack file has been detected to be "
+					"in the wrong folder. This will be automatically fixed, but expect a "
+					"game crash.");
 				if (std::rename(filePath.string().c_str(),
 					(PRSPath + filePath.filename().string()).c_str()) == 0) {
 					printDebug("Successfully moved the texture pack file to the "
 						"folder ~yourModFolder\\gd_PC\\.");
-					printDebug("Expect a game crash, please run the game again.");
 				}
 				else {
-					printDebug("(Warning) Error moving the texture pack file to "
-						"the right folder.");
-					printDebug("(Warning) The texture pack file should be saved "
+					showWarning("ERROR: Could not move the texture pack file to "
+						"the right folder. The texture pack file should be saved "
 						"to (~yourModFolder\\gd_PC\\PRS\\(your-texture-pak).pak).");
 				}
 			}
